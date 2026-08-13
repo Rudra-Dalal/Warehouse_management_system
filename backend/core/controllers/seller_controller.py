@@ -1,11 +1,14 @@
-from typing import List
+from typing import List, Optional
 from fastapi import HTTPException, status
 
 from commons.logger import get_logger
 from core.apis.schemas.requests.seller_request import SellerCreateRequest, SellerUpdateRequest
 from core.apis.schemas.responses.seller_response import SellerResponse
 from core.cruds.seller_crud import SellerCRUD
+from core.models.audit_log_model import AuditAction
 from core.models.seller_model import SellerModel
+from core.models.user_model import UserModel
+from core.services.audit_service import AuditService
 
 logger = get_logger(__name__)
 
@@ -71,7 +74,9 @@ class SellerController:
             updated_at=seller.updated_at,
         )
 
-    async def create_seller(self, request: SellerCreateRequest) -> SellerResponse:
+    async def create_seller(
+        self, request: SellerCreateRequest, current_user: Optional[UserModel] = None
+    ) -> SellerResponse:
         """Registers a new seller account with unique seller code validation.
         Raises HTTP 409 Conflict if code is already registered.
 
@@ -98,6 +103,14 @@ class SellerController:
             is_active=True,
         )
         created = await self.seller_crud.create_seller(new_seller)
+        audit_service = AuditService()
+        await audit_service.record_event(
+            action=AuditAction.SELLER_CREATED,
+            entity_type="SELLER",
+            entity_id=created.id,
+            user_id=current_user.id if current_user else None,
+            new_state={"code": created.code, "name": created.name, "email": created.email},
+        )
         return SellerResponse(
             id=created.id,
             code=created.code,
@@ -110,7 +123,7 @@ class SellerController:
         )
 
     async def update_seller(
-        self, seller_id: str, request: SellerUpdateRequest
+        self, seller_id: str, request: SellerUpdateRequest, current_user: Optional[UserModel] = None
     ) -> SellerResponse:
         """Updates specific metadata or active state of a seller account.
         Raises HTTP 404 Not Found if target seller is missing.
@@ -118,6 +131,7 @@ class SellerController:
         Args:
             seller_id (str): Target seller ObjectId string.
             request (SellerUpdateRequest): Field update parameters.
+            current_user (Optional[UserModel]): Authenticated user performing action.
 
         Returns:
             SellerResponse: The updated seller account details.
@@ -154,6 +168,15 @@ class SellerController:
             )
 
         updated = await self.seller_crud.update_seller(seller_id, update_fields)
+        audit_service = AuditService()
+        await audit_service.record_event(
+            action=AuditAction.SELLER_UPDATED,
+            entity_type="SELLER",
+            entity_id=updated.id,
+            user_id=current_user.id if current_user else None,
+            previous_state={"name": existing.name, "email": existing.email, "is_active": existing.is_active},
+            new_state={"name": updated.name, "email": updated.email, "is_active": updated.is_active},
+        )
         return SellerResponse(
             id=updated.id,
             code=updated.code,

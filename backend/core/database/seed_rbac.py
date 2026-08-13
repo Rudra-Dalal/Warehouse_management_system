@@ -61,6 +61,7 @@ async def seed_rbac_data() -> None:
         "fulfillment.pick",
         "fulfillment.pack",
         "fulfillment.ship",
+        "audit.read",
         "products.read",
         "sellers.read",
     ]

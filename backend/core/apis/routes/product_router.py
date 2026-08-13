@@ -49,7 +49,7 @@ async def create_product(
         ProductResponse: The created product details.
     """
     logger.info(f"Calling POST /v1/products endpoint by {current_user.email}")
-    return await product_controller.create_product(request)
+    return await product_controller.create_product(request, current_user)
 
 
 @router.get("/by-sku/{sku}", response_model=ProductResponse)

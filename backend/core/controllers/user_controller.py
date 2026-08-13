@@ -7,8 +7,9 @@ from core.apis.schemas.requests.user_request import UserCreateRequest, UserUpdat
 from core.apis.schemas.responses.user_response import UserResponse
 from core.cruds.permission_crud import PermissionCRUD
 from core.cruds.role_crud import RoleCRUD
-from core.cruds.user_crud import UserCRUD
+from core.models.audit_log_model import AuditAction
 from core.models.user_model import UserModel
+from core.services.audit_service import AuditService
 
 logger = get_logger(__name__)
 
@@ -114,6 +115,19 @@ class UserController:
         )
         created_user = await self.user_crud.create_user(new_user)
         logger.info(f"User {created_user.email} successfully created by {current_user.email}")
+        audit_service = AuditService()
+        await audit_service.record_event(
+            action=AuditAction.USER_CREATED,
+            entity_type="USER",
+            entity_id=created_user.id,
+            user_id=current_user.id,
+            new_state={
+                "name": created_user.name,
+                "email": created_user.email,
+                "role_id": created_user.role_id,
+                "is_active": created_user.is_active,
+            },
+        )
         return UserResponse(
             id=created_user.id,
             name=created_user.name,
@@ -195,6 +209,23 @@ class UserController:
             )
 
         updated_user = await self.user_crud.update_user(target_user_id, update_fields)
+        audit_service = AuditService()
+        await audit_service.record_event(
+            action=AuditAction.USER_UPDATED,
+            entity_type="USER",
+            entity_id=updated_user.id,
+            user_id=current_user.id,
+            previous_state={
+                "name": target_user.name,
+                "role_id": target_user.role_id,
+                "is_active": target_user.is_active,
+            },
+            new_state={
+                "name": updated_user.name,
+                "role_id": updated_user.role_id,
+                "is_active": updated_user.is_active,
+            },
+        )
         return UserResponse(
             id=updated_user.id,
             name=updated_user.name,

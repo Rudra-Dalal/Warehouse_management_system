@@ -47,7 +47,7 @@ async def create_seller(
         SellerResponse: The created seller details.
     """
     logger.info(f"Calling POST /v1/sellers endpoint by {current_user.email}")
-    return await seller_controller.create_seller(request)
+    return await seller_controller.create_seller(request, current_user)
 
 
 @router.get("/{seller_id}", response_model=SellerResponse)
@@ -87,4 +87,4 @@ async def update_seller(
         SellerResponse: Updated seller details response.
     """
     logger.info(f"Calling PATCH /v1/sellers/{seller_id} endpoint by {current_user.email}")
-    return await seller_controller.update_seller(seller_id, request)
+    return await seller_controller.update_seller(seller_id, request, current_user)

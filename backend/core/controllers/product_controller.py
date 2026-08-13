@@ -6,7 +6,10 @@ from core.apis.schemas.requests.product_request import ProductCreateRequest, Pro
 from core.apis.schemas.responses.product_response import ProductResponse
 from core.cruds.product_crud import ProductCRUD
 from core.cruds.seller_crud import SellerCRUD
+from core.models.audit_log_model import AuditAction
 from core.models.product_model import ProductModel
+from core.models.user_model import UserModel
+from core.services.audit_service import AuditService
 
 logger = get_logger(__name__)
 
@@ -138,7 +141,9 @@ class ProductController:
             updated_at=product.updated_at,
         )
 
-    async def create_product(self, request: ProductCreateRequest) -> ProductResponse:
+    async def create_product(
+        self, request: ProductCreateRequest, current_user: Optional[UserModel] = None
+    ) -> ProductResponse:
         """Registers a new product catalog item with SKU and UPC uniqueness checks.
         Validates seller_id existence; raises 404 for missing seller or 409 for conflicts.
 
@@ -185,6 +190,14 @@ class ProductController:
             is_active=True,
         )
         created = await self.product_crud.create_product(new_product)
+        audit_service = AuditService()
+        await audit_service.record_event(
+            action=AuditAction.PRODUCT_CREATED,
+            entity_type="PRODUCT",
+            entity_id=created.id,
+            user_id=current_user.id if current_user else None,
+            new_state={"sku": created.sku, "name": created.name, "upc": created.upc, "seller_id": created.seller_id},
+        )
         return ProductResponse(
             id=created.id,
             sku=created.sku,

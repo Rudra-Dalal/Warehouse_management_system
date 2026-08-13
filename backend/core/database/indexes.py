@@ -71,11 +71,15 @@ async def create_database_indexes() -> None:
     await db["orders"].create_index("status")
 
     # Audit Logs collection
-    await db["audit_logs"].create_index("timestamp")
+    await db["audit_logs"].create_index("created_at")
     await db["audit_logs"].create_index("user_id")
     await db["audit_logs"].create_index("entity_type")
     await db["audit_logs"].create_index("entity_id")
     await db["audit_logs"].create_index("warehouse_id")
+    await db["audit_logs"].create_index("warehouse_code")
+    await db["audit_logs"].create_index("action")
+    await db["audit_logs"].create_index([("reference_type", 1), ("reference_id", 1)])
+    await db["audit_logs"].create_index([("entity_type", 1), ("entity_id", 1), ("created_at", -1)])
 
     # Fulfillments collection
     await db["fulfillments"].create_index("order_id", unique=True)

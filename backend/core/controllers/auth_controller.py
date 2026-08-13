@@ -8,7 +8,9 @@ from core.apis.schemas.responses.user_response import UserMeResponse
 from core.cruds.permission_crud import PermissionCRUD
 from core.cruds.role_crud import RoleCRUD
 from core.cruds.user_crud import UserCRUD
+from core.models.audit_log_model import AuditAction
 from core.models.user_model import UserModel
+from core.services.audit_service import AuditService
 
 logger = get_logger(__name__)
 
@@ -35,9 +37,18 @@ class AuthController:
             TokenResponse: The generated JWT access token payload.
         """
         logger.info(f"Executing AuthController.login for {login_data.email}")
+        audit_service = AuditService()
         user = await self.user_crud.get_by_email(login_data.email)
         if not user:
             logger.warning(f"Login failed: Unknown email {login_data.email}")
+            await audit_service.record_event(
+                action=AuditAction.AUTH_LOGIN_FAILURE,
+                entity_type="AUTH",
+                entity_id=login_data.email,
+                success=False,
+                error_code="UNKNOWN_EMAIL",
+                metadata={"email": login_data.email},
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid credentials",
@@ -45,6 +56,15 @@ class AuthController:
 
         if not user.is_active:
             logger.warning(f"Login failed: User account {login_data.email} is disabled")
+            await audit_service.record_event(
+                action=AuditAction.AUTH_LOGIN_FAILURE,
+                entity_type="AUTH",
+                entity_id=user.id,
+                user_id=user.id,
+                success=False,
+                error_code="ACCOUNT_DISABLED",
+                metadata={"email": login_data.email},
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User account is disabled",
@@ -52,11 +72,28 @@ class AuthController:
 
         if not verify_password(login_data.password, user.password_hash):
             logger.warning(f"Login failed: Password mismatch for {login_data.email}")
+            await audit_service.record_event(
+                action=AuditAction.AUTH_LOGIN_FAILURE,
+                entity_type="AUTH",
+                entity_id=user.id,
+                user_id=user.id,
+                success=False,
+                error_code="INVALID_PASSWORD",
+                metadata={"email": login_data.email},
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid credentials",
             )
 
+        await audit_service.record_event(
+            action=AuditAction.AUTH_LOGIN_SUCCESS,
+            entity_type="USER",
+            entity_id=user.id,
+            user_id=user.id,
+            success=True,
+            metadata={"email": login_data.email},
+        )
         access_token = create_access_token(subject=user.id)
         logger.info(f"Login successful for user {user.email}")
         return TokenResponse(access_token=access_token)

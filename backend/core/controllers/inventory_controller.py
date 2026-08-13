@@ -16,9 +16,11 @@ from core.cruds.inventory_crud import InventoryCRUD
 from core.cruds.inventory_movement_crud import InventoryMovementCRUD
 from core.cruds.product_crud import ProductCRUD
 from core.database.database import DatabaseManager
+from core.models.audit_log_model import AuditAction
 from core.models.inventory_model import InventoryModel
 from core.models.inventory_movement_model import InventoryMovementModel
 from core.models.user_model import UserModel
+from core.services.audit_service import AuditService
 from core.services.inventory_reservation_service import InventoryReservationService
 
 logger = get_logger(__name__)
@@ -187,6 +189,17 @@ class InventoryController:
             damaged_quantity=0,
         )
         created = await self.inventory_crud.create_inventory(new_inventory)
+        audit_service = AuditService()
+        await audit_service.record_event(
+            action=AuditAction.INVENTORY_CREATED,
+            entity_type="INVENTORY",
+            entity_id=created.id,
+            warehouse_id=created.warehouse_id,
+            warehouse_code=wh_code,
+            user_id=current_user.id if current_user else None,
+            new_state={"available_quantity": created.available_quantity},
+            metadata={"product_id": created.product_id, "sku": product.sku},
+        )
 
         return InventoryResponse(
             id=created.id,
@@ -264,6 +277,20 @@ class InventoryController:
         db = DatabaseManager.get_db()
         product = await self.product_crud.get_by_id(record.product_id)
         wh = await db["warehouses"].find_one({"_id": ObjectId(record.warehouse_id)})
+
+        wh_code = wh["code"] if wh else None
+        audit_service = AuditService()
+        await audit_service.record_event(
+            action=AuditAction.INVENTORY_ADJUSTED,
+            entity_type="INVENTORY",
+            entity_id=updated.id,
+            warehouse_id=updated.warehouse_id,
+            warehouse_code=wh_code,
+            user_id=current_user.id,
+            previous_state={"available_quantity": record.available_quantity},
+            new_state={"available_quantity": updated.available_quantity},
+            metadata={"quantity_delta": request.quantity_delta, "note": request.note, "product_id": record.product_id},
+        )
 
         return InventoryResponse(
             id=updated.id,
