@@ -11,11 +11,11 @@ The application follows the **EIGI FastAPI Architecture Standard**:
 ```text
 HTTP Request
      ↓
-Authentication / Authorization Dependencies
+Authentication / Authorization Dependencies (JWT & RBAC)
      ↓
-API Routers (thin routes, request/response models)
+API Routers (thin routes, request/response Pydantic models)
      ↓
-Controllers (business logic, security rules, orchestration)
+Controllers (business logic, security rules, domain orchestration)
      ↓
 CRUD Wrappers (PyMongo Async database access)
      ↓
@@ -24,63 +24,93 @@ Models / Database (MongoDB collections & indexes)
 
 ---
 
-## 2. Authentication & Security (Phase 2)
-
-### Authentication Flow
-1. **Login**: `POST /v1/auth/login` validates credentials against stored bcrypt password hashes.
-2. **Token Generation**: On success, issues a signed JWT access token containing subject claim `sub` (user_id) and expiration `exp`.
-3. **Protected Requests**: Clients pass `Authorization: Bearer <access_token>` in HTTP headers.
-4. **Current User Dependency**: `commons/auth.py` -> `get_current_user` extracts JWT, verifies signature/expiration, and loads the active user from MongoDB. Invalid/expired tokens return `HTTP 401 Unauthorized`.
-
-### Role-Based Access Control (RBAC) Architecture
-- **User**: Stores reference to assigned role (`role_id`).
-- **Role**: Stores list of granted permission ObjectIds (`permission_ids`).
-- **Permission**: Defines action strings (`inventory.read`, `users.manage`, etc.).
+## 2. Domain Relationship (Phase 3)
 
 ```text
-User ──> role_id ──> Role ──> permission_ids ──> Permissions
+    SELLER
+       │
+       │ seller_id
+       ▼
+    PRODUCT
+       │
+       │ product_id
+       ▼
+    INVENTORY ───> INVENTORY MOVEMENT (History)
+       │
+       │ warehouse_id
+       ▼
+    WAREHOUSE (RENO / COLUMBUS)
 ```
 
-- **Permission Enforcement**: `commons/auth.py` -> `require_permission("permission_name")` resolves user permissions and returns `HTTP 403 Forbidden` if denied.
-- **Privilege Escalation Protection**: Users without `users.manage` permission cannot grant themselves higher roles or modify account states.
+### Key Domain Rules & Invariants
+1. **Warehouse Specific Inventory**: Stock is isolated per warehouse. Unique composite index `(product_id, warehouse_id)` enforces one stock record per product per warehouse.
+2. **UPC String Preservation**: UPC barcode codes are stored and queried strictly as `strings` (e.g., `"012345678905"`) to preserve leading zeros. Non-empty UPCs are enforced unique via a MongoDB partial unique index.
+3. **SKU Uniqueness**: SKU business codes are unique uppercase identifiers across the catalog.
+4. **Inventory State & Movements**: `Inventory` documents maintain `available_quantity`, `reserved_quantity` (Phase 4 placeholder), and `damaged_quantity`. Cycle count stock adjustments (`PATCH /v1/inventory/{id}/adjust`) log signed integer movements (`+` for increase, `-` for decrease) in a separate `inventory_movements` collection and record `user_id`.
+5. **Non-Negative Stock Invariant**: `available_quantity >= 0` is strictly enforced. Adjustments resulting in negative stock are rejected with `HTTP 400 Bad Request`.
+
+> [!NOTE]
+> Inventory reservation & concurrency logic is strictly deferred to **Phase 4**. Receiving workflows are deferred to **Phase 5**.
 
 ---
 
-## 3. Initial Roles & Permissions
+## 3. Security, Roles & Permissions (Phase 2 & Phase 3)
 
 ### Roles
 - **`ADMIN`**: Full administrative access (`all permissions`).
 - **`MANAGER`**: Management and operational access (`all permissions`).
-- **`WAREHOUSE_STAFF`**: Operational access (`inventory.read`, `inventory.receive`, `orders.read`, `fulfillment.pick`, `fulfillment.pack`, `fulfillment.ship`).
+- **`WAREHOUSE_STAFF`**: Operational warehouse access (`inventory.read`, `inventory.receive`, `orders.read`, `fulfillment.pick`, `fulfillment.pack`, `fulfillment.ship`, `products.read`, `sellers.read`).
 
-### Permissions
-- `inventory.read`
-- `inventory.adjust`
-- `inventory.receive`
-- `orders.read`
-- `orders.confirm`
-- `fulfillment.pick`
-- `fulfillment.pack`
-- `fulfillment.ship`
-- `audit.read`
-- `users.manage`
+### Permissions List
+- `users.manage`: User account administration
+- `sellers.read`: View seller profile details
+- `sellers.manage`: Create and update seller accounts
+- `products.read`: View product catalog items, lookup by SKU/UPC
+- `products.manage`: Create and update product catalog definitions
+- `inventory.read`: View warehouse stock levels and movement history
+- `inventory.adjust`: Create initial inventory and adjust stock levels
+- `inventory.receive`: Receive stock shipments (Phase 5)
+- `orders.read` / `orders.confirm`: Orders handling (Phase 6)
+- `fulfillment.pick` / `fulfillment.pack` / `fulfillment.ship`: Order fulfillment (Phase 7)
+- `audit.read`: View system audit logs
 
 ---
 
-## 4. API Endpoints
+## 4. API Endpoints Summary
 
 ### Infrastructure
 - `GET /health`: System health and MongoDB ping status.
 
-### Authentication
-- `POST /v1/auth/login`: Authenticates credentials and returns JWT bearer token.
-- `GET /v1/auth/me`: Returns current user profile, role name, and granted permission list.
+### Authentication & Self Services
+- `POST /v1/auth/login`: Authenticate credentials and receive JWT bearer token.
+- `GET /v1/auth/me`: Retrieve current authenticated user profile and permissions.
 
-### User Management (`users.manage` protected)
+### User Management (`users.manage`)
 - `GET /v1/users`: List all user accounts.
-- `POST /v1/users`: Create a new user account.
-- `GET /v1/users/{user_id}`: Get specific user profile.
-- `PATCH /v1/users/{user_id}`: Update user profile, status, or role assignment.
+- `POST /v1/users`: Create user account.
+- `GET /v1/users/{user_id}`: Get specific user details.
+- `PATCH /v1/users/{user_id}`: Update user details or role.
+
+### Seller Management (`sellers.read`, `sellers.manage`)
+- `GET /v1/sellers`: List e-commerce sellers.
+- `POST /v1/sellers`: Register a new seller.
+- `GET /v1/sellers/{seller_id}`: Get seller details.
+- `PATCH /v1/sellers/{seller_id}`: Update seller profile.
+
+### Product Catalog (`products.read`, `products.manage`)
+- `GET /v1/products`: List products (optional `seller_id` filter).
+- `POST /v1/products`: Create a product item (validates `seller_id`, unique `sku`, and string `upc`).
+- `GET /v1/products/by-sku/{sku}`: Lookup product by unique SKU.
+- `GET /v1/products/by-upc/{upc}`: Resolve product by UPC string (preserves leading zeros).
+- `GET /v1/products/{product_id}`: Get product details.
+- `PATCH /v1/products/{product_id}`: Update product metadata or UPC string.
+
+### Inventory State & Movements (`inventory.read`, `inventory.adjust`)
+- `GET /v1/inventory`: List stock levels (filters: `warehouse_code`, `sku`, `product_id`).
+- `POST /v1/inventory`: Register initial stock for a product at a warehouse.
+- `GET /v1/inventory/{inventory_id}`: Get inventory record state.
+- `PATCH /v1/inventory/{inventory_id}/adjust`: Cycle count adjustment (+/- signed delta, logs movement & user).
+- `GET /v1/inventory/{inventory_id}/movements`: Get historical movement logs for an inventory item.
 
 ---
 
@@ -126,21 +156,33 @@ OpenAPI docs will be available at `http://localhost:8000/docs`.
 
 ## 7. Testing Strategy & Instructions
 
-The test suite runs against an isolated test database (`whitfield_wms_test`) and covers security unit tests, Auth API contracts, RBAC permission checks, and privilege escalation protection.
+The test suite executes against an isolated test database (`whitfield_wms_test`) and validates infrastructure, security, auth API, RBAC, sellers, products, UPC string preservation, warehouse stock isolation, and inventory adjustments.
 
-### Running Complete Test Suite
+### Running Complete Test Suite (28 / 28 Tests)
 ```bash
 python -m pytest tests/ -v
 ```
 
-### Running Specific Test Groups
+### Running Specific Test Categories
 ```bash
-# Security unit tests (bcrypt & JWT)
+# Infrastructure & Seeding
+python -m pytest tests/unit/test_milestone1.py -v
+
+# Security Unit Tests (bcrypt & JWT)
 python -m pytest tests/unit/test_security.py -v
 
-# Auth API tests (login, tokens, /me)
+# Authentication API Tests
 python -m pytest tests/api/test_auth_api.py -v
 
-# RBAC authorization & privilege escalation tests
+# RBAC & Privilege Escalation Tests
 python -m pytest tests/api/test_rbac.py -v
+
+# Seller API Tests
+python -m pytest tests/api/test_seller_api.py -v
+
+# Product Catalog & UPC String Lookup Tests
+python -m pytest tests/api/test_product_api.py -v
+
+# Warehouse Inventory & Movement Log Tests
+python -m pytest tests/api/test_inventory_api.py -v
 ```

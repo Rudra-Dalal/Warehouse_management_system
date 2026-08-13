@@ -29,7 +29,19 @@ async def create_database_indexes() -> None:
 
     # Products collection
     await db["products"].create_index("sku", unique=True)
-    await db["products"].create_index("upc")
+    try:
+        cursor = await db["products"].list_indexes()
+        async for idx in cursor:
+            if idx.get("name") == "upc_1" and "partialFilterExpression" not in idx:
+                await db["products"].drop_index("upc_1")
+    except Exception:
+        pass
+
+    await db["products"].create_index(
+        "upc",
+        unique=True,
+        partialFilterExpression={"upc": {"$type": "string", "$gt": ""}},
+    )
 
     # Inventory collection: Unique composite index per product per warehouse
     await db["inventory"].create_index(

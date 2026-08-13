@@ -32,6 +32,10 @@ async def seed_rbac_data() -> None:
         {"name": "fulfillment.ship", "description": "Ship orders and assign tracking"},
         {"name": "audit.read", "description": "Read system audit log records"},
         {"name": "users.manage", "description": "Manage user accounts and role assignments"},
+        {"name": "sellers.read", "description": "Read seller details"},
+        {"name": "sellers.manage", "description": "Manage seller accounts and profiles"},
+        {"name": "products.read", "description": "Read product catalog details"},
+        {"name": "products.manage", "description": "Manage products and SKU definitions"},
     ]
 
     permission_map = {}
@@ -52,6 +56,8 @@ async def seed_rbac_data() -> None:
         "fulfillment.pick",
         "fulfillment.pack",
         "fulfillment.ship",
+        "products.read",
+        "sellers.read",
     ]
     staff_perm_ids = [permission_map[name] for name in staff_perm_names if name in permission_map]
 
