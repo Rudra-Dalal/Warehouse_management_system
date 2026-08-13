@@ -56,14 +56,17 @@ Models / Database (MongoDB collections & indexes)
 6. **Inbound Receiving & Strict Idempotency (Phase 5)**: Inbound inventory receiving (`POST /v1/receiving`) processes shipment receipts with strict idempotency.
    - **Database Unique Constraint**: MongoDB enforces a strict `UNIQUE(receiving_reference)` index.
    - **Zero Double-Counting**: Submitting an identical `receiving_reference` multiple times (network retries, double clicks) returns the existing `ReceivingResponse` (`HTTP 200 OK`) without double-incrementing stock or creating additional movement logs.
-7. **Order Management & Shared Reservation Service (Phase 6)**: Order creation (`POST /v1/orders`) validates seller, warehouse, and products, then reserves inventory across all line items using `InventoryReservationService`.
-   - **Reuse of Phase 4 Logic**: Communicates directly through Python service/CRUD abstractions, reusing `InventoryCRUD.reserve_inventory_atomic()` without internal HTTP calls or duplicate reservation code.
-   - **All-or-Nothing Multi-Item Atomicity**: If an order contains multiple line items and any product lacks sufficient stock, **all previously reserved items for that order are rolled back**, returning `HTTP 409 Conflict`. Zero partial reservations occur.
+7. **Order Management & Transaction-Backed Multi-Item Atomicity (Phase 6)**: Order creation (`POST /v1/orders`) validates seller, warehouse, and products, then reserves inventory across all line items using `InventoryReservationService`.
+   - **Transaction Requirement**: Multi-item order creation requires a **transaction-capable MongoDB deployment (Replica Set or Atlas)**. The entire workflow (`reserve inventory -> log movements -> insert order`) executes inside a single MongoDB transaction (`client.start_session()` + `start_transaction()`).
+   - **Session Propagation**: The transaction session propagates from `OrderController` $\rightarrow$ `InventoryReservationService` $\rightarrow$ `InventoryCRUD.reserve_inventory_atomic(..., session=session)` $\rightarrow$ `InventoryMovementCRUD.create_movement(..., session=session)`.
+   - **All-or-Nothing Multi-Item Transaction Rollback**: If any line item in an order fails reservation (insufficient stock, invalid product) or if order creation fails, **MongoDB aborts the transaction**, automatically rolling back all inventory changes and movement logs in database state (`HTTP 409 Conflict`). Zero manual compensation code or partial reservations occur.
    - **Order Idempotency**: MongoDB enforces `UNIQUE(order_number)`. Resubmitting an existing `order_number` returns the existing confirmed order (`HTTP 200 OK`) without double-reserving inventory or creating duplicate movement logs.
-8. **Non-Negative Stock Invariant**: `available_quantity >= 0` is strictly enforced. Adjustments or reservations exceeding available stock return `HTTP 400 Bad Request` or `HTTP 409 Conflict` respectively.
-
-> [!NOTE]
-> Fulfillment execution (picking, packing, shipping) is strictly deferred to **Phase 7**.
+8. **Fulfillment Execution & State Machine (Phase 7)**: Operational execution of a confirmed order follows a strict state machine: `READY_TO_PICK` $\rightarrow$ `PICKED` $\rightarrow$ `PACKED` $\rightarrow$ `SHIPPED`.
+   - **One Fulfillment Per Order**: MongoDB enforces a strict `UNIQUE(order_id)` index on the `fulfillments` collection. Submitting `POST /v1/fulfillment` multiple times for the same order returns the existing record idempotently.
+   - **Picking Consumes Reservation (Zero Double-Decrement)**: Order creation (Phase 6) already decremented `available_quantity` and incremented `reserved_quantity`. Picking (`POST /v1/fulfillment/{id}/pick`) **consumes the reservation**: `reserved_quantity -= picked_quantity`. **Available quantity is NOT decremented again during picking** (`available=90`, `reserved=10` $\rightarrow$ after pick: `available=90`, `reserved=0`).
+   - **Transactional Picking & Shipping**: Picking updates inventory reservations, records `PICK` movement logs (`movement_type = "PICK"`), and updates status inside a single MongoDB transaction. Shipping (`POST /v1/fulfillment/{id}/ship`) updates fulfillment and order statuses to `SHIPPED` inside a single MongoDB transaction.
+   - **Invalid Transition Protection**: Invalid state transitions (e.g. `READY_TO_PICK` $\rightarrow$ `PACKED` or `SHIPPED`) return `HTTP 409 Conflict`.
+9. **Non-Negative Stock Invariant**: `available_quantity >= 0` and `reserved_quantity >= 0` are strictly enforced.
 
 ---
 
@@ -72,7 +75,7 @@ Models / Database (MongoDB collections & indexes)
 ### Roles
 - **`ADMIN`**: Full administrative access (`all permissions`).
 - **`MANAGER`**: Management and operational access (`all permissions`).
-- **`WAREHOUSE_STAFF`**: Operational warehouse access (`inventory.read`, `inventory.reserve`, `inventory.receive`, `orders.read`, `orders.confirm`, `fulfillment.pick`, `fulfillment.pack`, `fulfillment.ship`, `products.read`, `sellers.read`).
+- **`WAREHOUSE_STAFF`**: Operational warehouse access (`inventory.read`, `inventory.reserve`, `inventory.receive`, `orders.read`, `orders.confirm`, `fulfillment.read`, `fulfillment.pick`, `fulfillment.pack`, `fulfillment.ship`, `products.read`, `sellers.read`).
 
 ### Permissions List
 - `users.manage`: User account administration
@@ -86,7 +89,10 @@ Models / Database (MongoDB collections & indexes)
 - `inventory.receive`: Receive inbound stock shipments (Phase 5)
 - `orders.read`: View customer order details and order listing (Phase 6)
 - `orders.confirm`: Create and confirm customer orders with atomic stock reservation (Phase 6)
-- `fulfillment.pick` / `fulfillment.pack` / `fulfillment.ship`: Order fulfillment (Phase 7)
+- `fulfillment.read`: View operational fulfillment records and details (Phase 7)
+- `fulfillment.pick`: Perform pick tasks and consume reservations (Phase 7)
+- `fulfillment.pack`: Perform packing operations (Phase 7)
+- `fulfillment.ship`: Finalize order shipping (Phase 7)
 - `audit.read`: View system audit logs
 
 ---

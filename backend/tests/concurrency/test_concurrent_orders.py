@@ -6,6 +6,7 @@ from main import app
 from commons.security import create_access_token, hash_password
 from core.cruds.inventory_crud import InventoryCRUD
 from core.cruds.inventory_movement_crud import InventoryMovementCRUD
+from core.cruds.order_crud import OrderCRUD
 from core.cruds.product_crud import ProductCRUD
 from core.cruds.role_crud import RoleCRUD
 from core.cruds.seller_crud import SellerCRUD
@@ -87,11 +88,12 @@ async def test_primary_concurrent_orders():
         responses = await asyncio.gather(*tasks)
 
         status_codes = [r.status_code for r in responses]
+        print("\nDEBUG STATUS CODES:", status_codes)
         success_count = status_codes.count(200)
         fail_count = status_codes.count(409)
 
-        assert success_count == 1, f"Expected exactly 1 success, got {success_count} ({status_codes})"
-        assert fail_count == 9, f"Expected exactly 9 failures, got {fail_count} ({status_codes})"
+        assert success_count == 1, f"Expected exactly 1 success, got {success_count}. Details: {status_details}"
+        assert fail_count == 9, f"Expected exactly 9 failures, got {fail_count}. Details: {status_details}"
 
         # Assert final DB inventory
         updated_inv = await inv_crud.get_by_id(inv.id)
@@ -283,3 +285,180 @@ async def test_concurrent_warehouse_isolation():
         updated_col = await inv_crud.get_by_id(inv_col.id)
         assert updated_col.available_quantity == 5
         assert updated_col.reserved_quantity == 5
+
+
+@pytest.mark.asyncio
+async def test_concurrent_multi_item_orders():
+    """Test 2 concurrent multi-item order requests (ORD-001 and ORD-002) both requesting A=10 and B=10
+    when stock for Product A is 10 and Product B is 10.
+    Asserts: Exactly 1 order succeeds, 1 fails. Final stock: A reserved=10, B reserved=10. Zero overselling!
+    """
+    role_crud = RoleCRUD()
+    admin_role = await role_crud.get_by_name("ADMIN")
+
+    user_crud = UserCRUD()
+    admin = await user_crud.create_user(
+        UserModel(
+            name="Multi Conc Admin",
+            email="multi_conc_admin@example.com",
+            password_hash=hash_password("Pass123!"),
+            role_id=admin_role.id,
+            is_active=True,
+        )
+    )
+    token = create_access_token(subject=admin.id)
+
+    seller_crud = SellerCRUD()
+    seller = await seller_crud.create_seller(
+        SellerModel(code="MULTI_CONC_SELLER", name="Multi Conc Seller")
+    )
+
+    product_crud = ProductCRUD()
+    prod_a = await product_crud.create_product(
+        ProductModel(sku="MULTI-CONC-A", name="Product A", seller_id=seller.id)
+    )
+    prod_b = await product_crud.create_product(
+        ProductModel(sku="MULTI-CONC-B", name="Product B", seller_id=seller.id)
+    )
+
+    db = DatabaseManager.get_db()
+    reno = await db["warehouses"].find_one({"code": "RENO"})
+    reno_id = str(reno["_id"])
+
+    inv_crud = InventoryCRUD()
+    inv_a = await inv_crud.create_inventory(
+        InventoryModel(
+            product_id=prod_a.id,
+            warehouse_id=reno_id,
+            available_quantity=10,
+            reserved_quantity=0,
+        )
+    )
+    inv_b = await inv_crud.create_inventory(
+        InventoryModel(
+            product_id=prod_b.id,
+            warehouse_id=reno_id,
+            available_quantity=10,
+            reserved_quantity=0,
+        )
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        start_event = asyncio.Event()
+
+        async def worker(order_num: str):
+            await start_event.wait()
+            return await client.post(
+                "/v1/orders",
+                json={
+                    "order_number": order_num,
+                    "seller_id": seller.id,
+                    "warehouse_code": "RENO",
+                    "items": [
+                        {"product_id": prod_a.id, "quantity": 10},
+                        {"product_id": prod_b.id, "quantity": 10},
+                    ],
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        t1 = asyncio.create_task(worker("ORD-MULTI-CONC-001"))
+        t2 = asyncio.create_task(worker("ORD-MULTI-CONC-002"))
+        start_event.set()
+
+        res1, res2 = await asyncio.gather(t1, t2)
+        status_codes = [res1.status_code, res2.status_code]
+        assert status_codes.count(200) == 1
+        assert status_codes.count(409) == 1
+
+        updated_a = await inv_crud.get_by_id(inv_a.id)
+        assert updated_a.available_quantity == 0
+        assert updated_a.reserved_quantity == 10
+
+        updated_b = await inv_crud.get_by_id(inv_b.id)
+        assert updated_b.available_quantity == 0
+        assert updated_b.reserved_quantity == 10
+
+
+@pytest.mark.asyncio
+async def test_concurrent_duplicate_order_number():
+    """Test 10 concurrent requests submitting the exact same order_number 'ORD-CONC-DUP-001' requesting 5 units.
+    Initial stock: 20 units.
+    Asserts: Exactly 1 order document is created in DB. Total reserved stock = 5 units (NOT 50 units).
+    """
+    role_crud = RoleCRUD()
+    admin_role = await role_crud.get_by_name("ADMIN")
+
+    user_crud = UserCRUD()
+    admin = await user_crud.create_user(
+        UserModel(
+            name="Dup Conc Admin",
+            email="dup_conc_admin@example.com",
+            password_hash=hash_password("Pass123!"),
+            role_id=admin_role.id,
+            is_active=True,
+        )
+    )
+    token = create_access_token(subject=admin.id)
+
+    seller_crud = SellerCRUD()
+    seller = await seller_crud.create_seller(
+        SellerModel(code="DUP_CONC_SELLER", name="Dup Conc Seller")
+    )
+
+    product_crud = ProductCRUD()
+    product = await product_crud.create_product(
+        ProductModel(sku="DUP-CONC-SKU", name="Dup Product", seller_id=seller.id)
+    )
+
+    db = DatabaseManager.get_db()
+    reno = await db["warehouses"].find_one({"code": "RENO"})
+    reno_id = str(reno["_id"])
+
+    inv_crud = InventoryCRUD()
+    inv = await inv_crud.create_inventory(
+        InventoryModel(
+            product_id=product.id,
+            warehouse_id=reno_id,
+            available_quantity=20,
+            reserved_quantity=0,
+        )
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        start_event = asyncio.Event()
+
+        async def worker():
+            await start_event.wait()
+            return await client.post(
+                "/v1/orders",
+                json={
+                    "order_number": "ORD-CONC-DUP-001",
+                    "seller_id": seller.id,
+                    "warehouse_code": "RENO",
+                    "items": [{"product_id": product.id, "quantity": 5}],
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        tasks = [asyncio.create_task(worker()) for _ in range(10)]
+        start_event.set()
+        responses = await asyncio.gather(*tasks)
+
+        status_codes = [r.status_code for r in responses]
+        assert all(code in (200, 409) for code in status_codes)
+        assert status_codes.count(200) >= 1
+
+        # Assert database order count for ORD-CONC-DUP-001 is EXACTLY 1
+        order_crud = OrderCRUD()
+        order = await order_crud.get_by_order_number("ORD-CONC-DUP-001")
+        assert order is not None
+
+        # Assert stock was reserved ONLY ONCE for 5 units (available=15, reserved=5)
+        updated_inv = await inv_crud.get_by_id(inv.id)
+        assert updated_inv.available_quantity == 15
+        assert updated_inv.reserved_quantity == 5

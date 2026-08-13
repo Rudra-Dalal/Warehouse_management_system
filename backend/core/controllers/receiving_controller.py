@@ -206,64 +206,67 @@ class ReceivingController:
             received_by_user_id=current_user.id,
         )
 
-        txn_supported = True
-        try:
-            async with client.start_session() as session:
-                try:
-                    await session.start_transaction()
-
+        max_retries = 5
+        for attempt in range(max_retries):
+            txn_supported = True
+            try:
+                async with client.start_session() as session:
                     try:
-                        shipment = await self.receiving_crud.create_receiving_shipment(shipment_model, session=session)
-                    except DuplicateKeyError:
-                        await session.abort_transaction()
-                        completed = await self._wait_for_received_shipment(request.receiving_reference)
-                        if completed and completed.status == "RECEIVED":
-                            return await self._build_receiving_response(completed)
-                        raise HTTPException(
-                            status_code=status.HTTP_409_CONFLICT,
-                            detail=f"Receiving reference '{request.receiving_reference}' is currently being processed",
+                        await session.start_transaction()
+
+                        try:
+                            shipment = await self.receiving_crud.create_receiving_shipment(shipment_model, session=session)
+                        except DuplicateKeyError:
+                            await session.abort_transaction()
+                            completed = await self._wait_for_received_shipment(request.receiving_reference)
+                            if completed and completed.status == "RECEIVED":
+                                return await self._build_receiving_response(completed)
+                            raise HTTPException(
+                                status_code=status.HTTP_409_CONFLICT,
+                                detail=f"Receiving reference '{request.receiving_reference}' is currently being processed",
+                            )
+
+                        updated_shipment = await self._process_receiving_items(
+                            shipment=shipment,
+                            warehouse_id=warehouse_id,
+                            items=shipment_model.items,
+                            current_user=current_user,
+                            session=session,
                         )
 
-                    updated_shipment = await self._process_receiving_items(
-                        shipment=shipment,
-                        warehouse_id=warehouse_id,
-                        items=shipment_model.items,
-                        current_user=current_user,
-                        session=session,
+                        await session.commit_transaction()
+                        logger.info(f"Successfully processed receiving shipment '{request.receiving_reference}' (transactional)")
+                        return await self._build_receiving_response(updated_shipment)
+
+                    except OperationFailure as op_err:
+                        try:
+                            await session.abort_transaction()
+                        except Exception:
+                            pass
+                        if op_err.code == 20 or "Transaction numbers" in str(op_err):
+                            txn_supported = False
+                        else:
+                            is_transient = op_err.has_error_label("TransientTransactionError") or op_err.code == 112
+                            if is_transient and attempt < max_retries - 1:
+                                logger.warning(f"Transient transaction WriteConflict for '{request.receiving_reference}' on attempt {attempt+1}. Retrying...")
+                                await asyncio.sleep(0.02 * (2 ** attempt))
+                                continue
+                            raise op_err
+                    except Exception as txn_err:
+                        try:
+                            await session.abort_transaction()
+                        except Exception:
+                            pass
+                        raise txn_err
+            except HTTPException:
+                raise
+            except Exception as err:
+                if txn_supported and not isinstance(err, OperationFailure):
+                    logger.error(f"Transaction error in receive_shipment: {err}")
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Receiving transaction failed: {str(err)}",
                     )
-
-                    await session.commit_transaction()
-                    logger.info(f"Successfully processed receiving shipment '{request.receiving_reference}' (transactional)")
-                    return await self._build_receiving_response(updated_shipment)
-
-                except OperationFailure as op_err:
-                    if op_err.code == 20 or "Transaction numbers" in str(op_err):
-                        txn_supported = False
-                        try:
-                            await session.abort_transaction()
-                        except Exception:
-                            pass
-                    else:
-                        try:
-                            await session.abort_transaction()
-                        except Exception:
-                            pass
-                        raise op_err
-                except Exception as txn_err:
-                    try:
-                        await session.abort_transaction()
-                    except Exception:
-                        pass
-                    raise txn_err
-        except HTTPException:
-            raise
-        except Exception as err:
-            if txn_supported and not isinstance(err, OperationFailure):
-                logger.error(f"Transaction error in receive_shipment: {err}")
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Receiving transaction failed: {str(err)}",
-                )
 
         # Fallback for standalone MongoDB deployment (Atomicity protected by UNIQUE receiving_reference index + atomic $inc)
         if not txn_supported:

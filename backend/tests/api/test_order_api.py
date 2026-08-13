@@ -1,3 +1,4 @@
+from unittest.mock import patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -262,6 +263,161 @@ async def test_multi_item_partial_failure_all_or_nothing():
         inv_b = await inv_crud.get_by_product_and_warehouse(prod_b.id, reno_id)
         assert inv_b.available_quantity == 2
         assert inv_b.reserved_quantity == 0
+
+        # Verify zero reservation movements were created for the failed order
+        mov_crud = InventoryMovementCRUD()
+        movs = await mov_crud.list_movements_by_context(prod_a.id, reno_id)
+        assert len(movs) == 0
+
+
+@pytest.mark.asyncio
+async def test_movement_creation_failure_rollback():
+    """Test that if movement creation raises an exception inside transaction, the MongoDB transaction aborts,
+    rolling back inventory stock updates and preventing order creation.
+    """
+    role_crud = RoleCRUD()
+    admin_role = await role_crud.get_by_name("ADMIN")
+
+    user_crud = UserCRUD()
+    admin = await user_crud.create_user(
+        UserModel(
+            name="Mov Fail Admin",
+            email="mov_fail_admin@example.com",
+            password_hash=hash_password("Pass123!"),
+            role_id=admin_role.id,
+            is_active=True,
+        )
+    )
+    token = create_access_token(subject=admin.id)
+
+    seller_crud = SellerCRUD()
+    seller = await seller_crud.create_seller(
+        SellerModel(code="MOV_FAIL_SELLER", name="Mov Fail Seller")
+    )
+
+    product_crud = ProductCRUD()
+    product = await product_crud.create_product(
+        ProductModel(sku="MOV-FAIL-SKU", name="Mov Fail Product", seller_id=seller.id)
+    )
+
+    db = DatabaseManager.get_db()
+    reno = await db["warehouses"].find_one({"code": "RENO"})
+    reno_id = str(reno["_id"])
+
+    inv_crud = InventoryCRUD()
+    inv = await inv_crud.create_inventory(
+        InventoryModel(
+            product_id=product.id,
+            warehouse_id=reno_id,
+            available_quantity=50,
+            reserved_quantity=0,
+        )
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        with patch.object(
+            InventoryMovementCRUD,
+            "create_movement",
+            side_effect=RuntimeError("Simulated movement logging crash"),
+        ):
+            res = await client.post(
+                "/v1/orders",
+                json={
+                    "order_number": "ORD-MOV-FAIL-001",
+                    "seller_id": seller.id,
+                    "warehouse_code": "RENO",
+                    "items": [{"product_id": product.id, "quantity": 10}],
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert res.status_code == 500
+
+        # Assert stock was rolled back by transaction abort
+        updated_inv = await inv_crud.get_by_id(inv.id)
+        assert updated_inv.available_quantity == 50
+        assert updated_inv.reserved_quantity == 0
+
+        # Assert order was NOT created
+        order_crud = OrderCRUD()
+        order = await order_crud.get_by_order_number("ORD-MOV-FAIL-001")
+        assert order is None
+
+
+@pytest.mark.asyncio
+async def test_order_persistence_failure_rollback():
+    """Test that if order document creation raises an exception inside transaction, the MongoDB transaction aborts,
+    rolling back inventory stock updates and movement logs.
+    """
+    role_crud = RoleCRUD()
+    admin_role = await role_crud.get_by_name("ADMIN")
+
+    user_crud = UserCRUD()
+    admin = await user_crud.create_user(
+        UserModel(
+            name="Ord Fail Admin",
+            email="ord_fail_admin@example.com",
+            password_hash=hash_password("Pass123!"),
+            role_id=admin_role.id,
+            is_active=True,
+        )
+    )
+    token = create_access_token(subject=admin.id)
+
+    seller_crud = SellerCRUD()
+    seller = await seller_crud.create_seller(
+        SellerModel(code="ORD_FAIL_SELLER", name="Ord Fail Seller")
+    )
+
+    product_crud = ProductCRUD()
+    product = await product_crud.create_product(
+        ProductModel(sku="ORD-FAIL-SKU", name="Ord Fail Product", seller_id=seller.id)
+    )
+
+    db = DatabaseManager.get_db()
+    reno = await db["warehouses"].find_one({"code": "RENO"})
+    reno_id = str(reno["_id"])
+
+    inv_crud = InventoryCRUD()
+    inv = await inv_crud.create_inventory(
+        InventoryModel(
+            product_id=product.id,
+            warehouse_id=reno_id,
+            available_quantity=50,
+            reserved_quantity=0,
+        )
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        with patch.object(
+            OrderCRUD,
+            "create_order",
+            side_effect=RuntimeError("Simulated order persistence crash"),
+        ):
+            res = await client.post(
+                "/v1/orders",
+                json={
+                    "order_number": "ORD-PERSIST-FAIL-001",
+                    "seller_id": seller.id,
+                    "warehouse_code": "RENO",
+                    "items": [{"product_id": product.id, "quantity": 10}],
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert res.status_code == 500
+
+        # Assert stock was rolled back by transaction abort
+        updated_inv = await inv_crud.get_by_id(inv.id)
+        assert updated_inv.available_quantity == 50
+        assert updated_inv.reserved_quantity == 0
+
+        # Assert zero movements remain
+        mov_crud = InventoryMovementCRUD()
+        movs = await mov_crud.list_movements_by_context(product.id, reno_id)
+        assert len(movs) == 0
 
 
 @pytest.mark.asyncio

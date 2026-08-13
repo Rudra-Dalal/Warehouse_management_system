@@ -1,3 +1,4 @@
+from bson import ObjectId
 from commons.logger import get_logger
 from commons.security import hash_password
 from core.config import settings
@@ -28,6 +29,7 @@ async def seed_rbac_data() -> None:
         {"name": "inventory.receive", "description": "Receive new stock shipments"},
         {"name": "orders.read", "description": "Read order details and status"},
         {"name": "orders.confirm", "description": "Confirm orders and reserve inventory"},
+        {"name": "fulfillment.read", "description": "Read fulfillment details and status"},
         {"name": "fulfillment.pick", "description": "Perform pick tasks"},
         {"name": "fulfillment.pack", "description": "Perform packing operations"},
         {"name": "fulfillment.ship", "description": "Ship orders and assign tracking"},
@@ -55,6 +57,7 @@ async def seed_rbac_data() -> None:
         "inventory.reserve",
         "inventory.receive",
         "orders.read",
+        "fulfillment.read",
         "fulfillment.pick",
         "fulfillment.pack",
         "fulfillment.ship",
@@ -81,6 +84,15 @@ async def seed_rbac_data() -> None:
         else:
             if r_data["name"] == "ADMIN":
                 admin_role_id = existing_role.id
+            # Sync new permissions to existing roles
+            existing_perm_ids = set(existing_role.permission_ids)
+            target_perm_ids = set(r_data["permission_ids"])
+            if existing_perm_ids != target_perm_ids:
+                updated_perm_ids = list(existing_perm_ids | target_perm_ids)
+                await role_crud.collection.update_one(
+                    {"_id": ObjectId(existing_role.id)},
+                    {"$set": {"permission_ids": updated_perm_ids}},
+                )
 
     # Optional Development Admin User Seeding
     if settings.ADMIN_EMAIL and settings.ADMIN_PASSWORD and admin_role_id:

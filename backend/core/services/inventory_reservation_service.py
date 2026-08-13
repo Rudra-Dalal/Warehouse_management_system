@@ -1,5 +1,4 @@
 from typing import Dict, List, Optional
-from bson import ObjectId
 from commons.logger import get_logger
 from core.cruds.inventory_crud import InventoryCRUD
 from core.cruds.inventory_movement_crud import InventoryMovementCRUD
@@ -33,7 +32,7 @@ class InventoryReservationService:
             user_id (str): User ObjectId string performing the reservation.
             reference_type (str): Context reference type (RESERVATION or ORDER).
             reference_id (Optional[str]): Target reference ObjectId string.
-            session (Optional[AsyncClientSession]): MongoDB transaction session.
+            session (Optional[AsyncClientSession]): Active MongoDB transaction session.
 
         Returns:
             Optional[InventoryModel]: Updated inventory model if successful, None if insufficient stock.
@@ -43,15 +42,21 @@ class InventoryReservationService:
             f"qty={requested_quantity} user={user_id}"
         )
 
+        if requested_quantity <= 0:
+            logger.warning(f"Invalid requested quantity '{requested_quantity}' <= 0 rejected")
+            return None
+
+        # Pass session handle to InventoryCRUD for transaction participation
         updated_inv = await self.inventory_crud.reserve_inventory_atomic(
             inventory_id=inventory_id,
             requested_quantity=requested_quantity,
+            session=session,
         )
 
         if not updated_inv:
             return None
 
-        # Log RESERVATION movement with signed negative delta
+        # Log RESERVATION movement with signed negative delta in the same session
         await self.inventory_movement_crud.create_movement(
             movement=InventoryMovementModel(
                 product_id=updated_inv.product_id,
@@ -75,7 +80,7 @@ class InventoryReservationService:
         reference_id: Optional[str] = None,
         session=None,
     ) -> List[InventoryModel]:
-        """Atomically reserves stock for multiple inventory items under all-or-nothing semantics.
+        """Atomically reserves stock for multiple inventory items under transactional semantics.
 
         Args:
             items (List[Dict]): List of dicts containing 'inventory_id' and 'quantity'.
@@ -92,7 +97,6 @@ class InventoryReservationService:
         """
         logger.info(f"Executing InventoryReservationService.reserve_multi_items_atomic for {len(items)} items")
         reserved_records = []
-        successful_reservations = []
 
         for item_data in items:
             inv_id = item_data["inventory_id"]
@@ -108,25 +112,11 @@ class InventoryReservationService:
             )
 
             if not updated_inv:
-                # Rollback any previously reserved items in this multi-item batch if running without multi-doc transaction
-                if not session and successful_reservations:
-                    logger.warning(
-                        f"Multi-item reservation failed on inventory {inv_id}. Rolling back {len(successful_reservations)} items."
-                    )
-                    for prev_inv_id, prev_qty in successful_reservations:
-                        await self.inventory_crud.collection.find_one_and_update(
-                            {"_id": ObjectId(prev_inv_id)},
-                            {
-                                "$inc": {
-                                    "available_quantity": prev_qty,
-                                    "reserved_quantity": -prev_qty,
-                                }
-                            },
-                        )
-
+                logger.warning(
+                    f"Multi-item reservation failed on inventory {inv_id}. Raising ValueError for transaction abort."
+                )
                 raise ValueError(f"Insufficient available stock for inventory ID '{inv_id}'")
 
             reserved_records.append(updated_inv)
-            successful_reservations.append((updated_inv.id, qty))
 
         return reserved_records

@@ -63,14 +63,14 @@ class InventoryCRUD:
         return InventoryModel(**doc)
 
     async def get_by_product_and_warehouse(
-        self, product_id: str, warehouse_id: str
+        self, product_id: str, warehouse_id: str, session=None
     ) -> Optional[InventoryModel]:
-        """Retrieves an inventory record for a specific Product and Warehouse combination.
-        Returns None if no matching record exists.
+        """Retrieves an inventory record for a specific product at a specific warehouse.
 
         Args:
-            product_id (str): Product ObjectId string.
-            warehouse_id (str): Warehouse ObjectId string.
+            product_id (str): String representation of product ObjectId.
+            warehouse_id (str): String representation of warehouse ObjectId.
+            session (Optional[AsyncClientSession]): Active MongoDB session.
 
         Returns:
             Optional[InventoryModel]: Inventory model instance if found.
@@ -80,7 +80,8 @@ class InventoryCRUD:
             f"at warehouse {warehouse_id}"
         )
         doc = await self.collection.find_one(
-            {"product_id": product_id, "warehouse_id": warehouse_id}
+            {"product_id": product_id, "warehouse_id": warehouse_id},
+            session=session,
         )
         if not doc:
             return None
@@ -146,7 +147,10 @@ class InventoryCRUD:
         return records
 
     async def reserve_inventory_atomic(
-        self, inventory_id: str, requested_quantity: int
+        self,
+        inventory_id: str,
+        requested_quantity: int,
+        session=None,
     ) -> Optional[InventoryModel]:
         """Atomically reserves stock using a single MongoDB find_one_and_update operation.
         Ensures availability check and quantity updates happen atomically in the database filter.
@@ -154,6 +158,7 @@ class InventoryCRUD:
         Args:
             inventory_id (str): Target inventory ObjectId string.
             requested_quantity (int): Number of units to reserve (> 0).
+            session (Optional[AsyncClientSession]): Active MongoDB transaction session.
 
         Returns:
             Optional[InventoryModel]: Updated inventory model if successful, None if stock < requested or missing ID.
@@ -162,7 +167,7 @@ class InventoryCRUD:
             f"Executing InventoryCRUD.reserve_inventory_atomic for ID {inventory_id} "
             f"requested_quantity={requested_quantity}"
         )
-        if not ObjectId.is_valid(inventory_id):
+        if requested_quantity <= 0 or not ObjectId.is_valid(inventory_id):
             return None
 
         result = await self.collection.find_one_and_update(
@@ -180,6 +185,53 @@ class InventoryCRUD:
                 },
             },
             return_document=ReturnDocument.AFTER,
+            session=session,
+        )
+
+        if not result:
+            return None
+        result["_id"] = str(result["_id"])
+        return InventoryModel(**result)
+
+    async def consume_reservation_atomic(
+        self,
+        inventory_id: str,
+        picked_quantity: int,
+        session=None,
+    ) -> Optional[InventoryModel]:
+        """Atomically consumes reserved stock during order picking.
+        Decrements reserved_quantity by picked_quantity without modifying available_quantity.
+
+        Args:
+            inventory_id (str): Target inventory ObjectId string.
+            picked_quantity (int): Number of reserved units to consume (> 0).
+            session (Optional[AsyncClientSession]): Active MongoDB transaction session.
+
+        Returns:
+            Optional[InventoryModel]: Updated inventory model if successful, None if reserved_quantity < picked_quantity or invalid ID.
+        """
+        logger.info(
+            f"Executing InventoryCRUD.consume_reservation_atomic for ID {inventory_id} "
+            f"picked_quantity={picked_quantity}"
+        )
+        if picked_quantity <= 0 or not ObjectId.is_valid(inventory_id):
+            return None
+
+        result = await self.collection.find_one_and_update(
+            {
+                "_id": ObjectId(inventory_id),
+                "reserved_quantity": {"$gte": picked_quantity},
+            },
+            {
+                "$inc": {
+                    "reserved_quantity": -picked_quantity,
+                },
+                "$set": {
+                    "updated_at": datetime.now(timezone.utc),
+                },
+            },
+            return_document=ReturnDocument.AFTER,
+            session=session,
         )
 
         if not result:

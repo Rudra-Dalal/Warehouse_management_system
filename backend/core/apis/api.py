@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from core.apis.routes import (
     auth_router,
+    fulfillment_router,
     inventory_router,
     order_router,
     product_router,
@@ -18,3 +19,4 @@ api_router.include_router(product_router.router)
 api_router.include_router(inventory_router.router)
 api_router.include_router(receiving_router.router)
 api_router.include_router(order_router.router)
+api_router.include_router(fulfillment_router.router)

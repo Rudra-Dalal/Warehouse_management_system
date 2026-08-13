@@ -77,4 +77,10 @@ async def create_database_indexes() -> None:
     await db["audit_logs"].create_index("entity_id")
     await db["audit_logs"].create_index("warehouse_id")
 
+    # Fulfillments collection
+    await db["fulfillments"].create_index("order_id", unique=True)
+    await db["fulfillments"].create_index("status")
+    await db["fulfillments"].create_index("warehouse_id")
+    await db["fulfillments"].create_index("created_at")
+
     logger.info("Database indexes successfully verified and created")
