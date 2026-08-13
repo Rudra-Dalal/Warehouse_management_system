@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     MONGODB_URL: str = "mongodb://127.0.0.1:27018/?directConnection=true"
     DATABASE_NAME: str = "whitfield_wms"
-    JWT_SECRET: str = "supersecretkey_change_in_production_123456789"
+    JWT_SECRET: str = "change-this-secret-in-environment"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
     ADMIN_EMAIL: str = ""

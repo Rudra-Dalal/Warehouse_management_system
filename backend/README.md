@@ -153,13 +153,13 @@ Create a `.env` file in `backend/`:
 ```env
 MONGODB_URL=mongodb://localhost:27017
 DATABASE_NAME=whitfield_wms
-JWT_SECRET=supersecretkey_change_in_production_123456789
+JWT_SECRET=replace-with-a-random-secret
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=480
 
 # Optional Development Admin Seed Credentials
 ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=AdminSecurePassword123!
+ADMIN_PASSWORD=replace-with-a-local-admin-password
 ```
 
 ---
