@@ -10,6 +10,7 @@ from core.apis.routes import (
     receiving_router,
     seller_router,
     user_router,
+    voice_router,
 )
 
 api_router = APIRouter()
@@ -22,3 +23,5 @@ api_router.include_router(receiving_router.router)
 api_router.include_router(order_router.router)
 api_router.include_router(fulfillment_router.router)
 api_router.include_router(audit_router.router)
+api_router.include_router(voice_router.router)
+

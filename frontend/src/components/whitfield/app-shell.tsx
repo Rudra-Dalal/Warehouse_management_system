@@ -18,6 +18,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "./command-palette";
+import { VoiceModal } from "./voice-modal";
+import { Mic } from "lucide-react";
+
 
 export type NavPath =
   | "/"
@@ -173,6 +176,7 @@ function SidebarFooter() {
 export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
@@ -242,15 +246,21 @@ export function AppShell({ children }: { children: ReactNode }) {
             </kbd>
           </button>
 
+          <button
+            onClick={() => setVoiceOpen(true)}
+            title="Voice AI Controller"
+            className="flex h-9 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-xs font-medium text-foreground transition-colors hover:border-signal hover:bg-surface-2"
+          >
+            <Mic className="size-4 text-signal" />
+            <span className="hidden sm:inline">Voice AI</span>
+          </button>
+
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden items-center gap-2 md:flex">
               <span className="pulse-dot size-1.5 rounded-full bg-ok" />
               <span className="numeric text-[11px] tracking-wider text-muted-foreground uppercase">
                 Reno · Columbus online
               </span>
-            </span>
-            <span className="numeric hidden rounded-md border border-border bg-surface px-2 py-1 text-[11px] tracking-wider text-muted-foreground uppercase sm:block">
-              Shift A
             </span>
           </div>
         </header>
@@ -261,6 +271,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <VoiceModal open={voiceOpen} onOpenChange={setVoiceOpen} />
     </div>
   );
 }
+
