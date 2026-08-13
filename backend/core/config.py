@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "supersecretkey_change_in_production_123456789"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+    ADMIN_EMAIL: str = ""
+    ADMIN_PASSWORD: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

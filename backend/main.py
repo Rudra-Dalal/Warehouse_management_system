@@ -3,8 +3,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from commons.logger import get_logger
+from core.apis.api import api_router
 from core.database.database import DatabaseManager, seed_fixed_warehouses
 from core.database.indexes import create_database_indexes
+from core.database.seed_rbac import seed_rbac_data
 
 logger = get_logger(__name__)
 
@@ -12,12 +14,13 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manages application startup and shutdown lifecycle events.
-    Connects to MongoDB, seeds fixed warehouses, creates indexes, and closes connection.
+    Connects to MongoDB, seeds fixed warehouses, seeds RBAC data, creates indexes, and closes connection.
     """
     logger.info("Executing application startup lifespan event")
     try:
         await DatabaseManager.connect_to_database()
         await seed_fixed_warehouses()
+        await seed_rbac_data()
         await create_database_indexes()
         logger.info("Application startup initialization completed successfully")
     except Exception as error:
@@ -44,6 +47,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register API routers under root
+app.include_router(api_router)
 
 
 @app.get("/health")

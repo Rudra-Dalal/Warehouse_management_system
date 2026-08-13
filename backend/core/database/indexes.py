@@ -18,6 +18,9 @@ async def create_database_indexes() -> None:
     # Roles collection
     await db["roles"].create_index("name", unique=True)
 
+    # Permissions collection
+    await db["permissions"].create_index("name", unique=True)
+
     # Fixed Warehouses collection
     await db["warehouses"].create_index("code", unique=True)
 

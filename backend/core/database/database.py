@@ -39,7 +39,7 @@ class DatabaseManager:
         """
         logger.info("Executing DatabaseManager.close_database_connection")
         if cls.client:
-            cls.client.close()
+            await cls.client.close()
             logger.info("Closed MongoDB client connection")
 
     @classmethod
