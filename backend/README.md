@@ -24,7 +24,7 @@ Models / Database (MongoDB collections & indexes)
 
 ---
 
-## 2. Domain Relationship (Phase 3)
+## 2. Domain Relationship (Phase 3 & Phase 4)
 
 ```text
     SELLER
@@ -46,20 +46,24 @@ Models / Database (MongoDB collections & indexes)
 1. **Warehouse Specific Inventory**: Stock is isolated per warehouse. Unique composite index `(product_id, warehouse_id)` enforces one stock record per product per warehouse.
 2. **UPC String Preservation**: UPC barcode codes are stored and queried strictly as `strings` (e.g., `"012345678905"`) to preserve leading zeros. Non-empty UPCs are enforced unique via a MongoDB partial unique index.
 3. **SKU Uniqueness**: SKU business codes are unique uppercase identifiers across the catalog.
-4. **Inventory State & Movements**: `Inventory` documents maintain `available_quantity`, `reserved_quantity` (Phase 4 placeholder), and `damaged_quantity`. Cycle count stock adjustments (`PATCH /v1/inventory/{id}/adjust`) log signed integer movements (`+` for increase, `-` for decrease) in a separate `inventory_movements` collection and record `user_id`.
-5. **Non-Negative Stock Invariant**: `available_quantity >= 0` is strictly enforced. Adjustments resulting in negative stock are rejected with `HTTP 400 Bad Request`.
+4. **Inventory State & Movements**: `Inventory` documents maintain `available_quantity`, `reserved_quantity`, and `damaged_quantity`. Cycle count stock adjustments (`PATCH /v1/inventory/{id}/adjust`) log signed integer movements (`+` for increase, `-` for decrease).
+5. **Atomic Inventory Reservation (Phase 4)**: Stock reservation (`POST /v1/inventory/{id}/reserve`) is performed via a **single atomic MongoDB conditional update** (`find_one_and_update`).
+   - **Filter**: `{"_id": ObjectId(inventory_id), "available_quantity": {"$gte": requested_quantity}}`
+   - **Update**: `{"$inc": {"available_quantity": -requested_quantity, "reserved_quantity": requested_quantity}, "$set": {"updated_at": ...}}`
+   - **Concurrency Safety**: Solves race conditions without Python-level locks (`asyncio.Lock`, `threading.Lock`) or read-check-write loops. Guaranteed oversell protection: if 10 concurrent requests each attempt to reserve 9 units when only 9 units are available, **exactly 1 succeeds (200 OK)** and **exactly 9 fail (409 Conflict)**.
+6. **Non-Negative Stock Invariant**: `available_quantity >= 0` is strictly enforced. Adjustments or reservations exceeding available stock return `HTTP 400 Bad Request` or `HTTP 409 Conflict` respectively.
 
 > [!NOTE]
-> Inventory reservation & concurrency logic is strictly deferred to **Phase 4**. Receiving workflows are deferred to **Phase 5**.
+> Receiving workflows are strictly deferred to **Phase 5**. Orders handling is deferred to **Phase 6**.
 
 ---
 
-## 3. Security, Roles & Permissions (Phase 2 & Phase 3)
+## 3. Security, Roles & Permissions (Phase 2, Phase 3 & Phase 4)
 
 ### Roles
 - **`ADMIN`**: Full administrative access (`all permissions`).
 - **`MANAGER`**: Management and operational access (`all permissions`).
-- **`WAREHOUSE_STAFF`**: Operational warehouse access (`inventory.read`, `inventory.receive`, `orders.read`, `fulfillment.pick`, `fulfillment.pack`, `fulfillment.ship`, `products.read`, `sellers.read`).
+- **`WAREHOUSE_STAFF`**: Operational warehouse access (`inventory.read`, `inventory.reserve`, `inventory.receive`, `orders.read`, `fulfillment.pick`, `fulfillment.pack`, `fulfillment.ship`, `products.read`, `sellers.read`).
 
 ### Permissions List
 - `users.manage`: User account administration
@@ -69,6 +73,7 @@ Models / Database (MongoDB collections & indexes)
 - `products.manage`: Create and update product catalog definitions
 - `inventory.read`: View warehouse stock levels and movement history
 - `inventory.adjust`: Create initial inventory and adjust stock levels
+- `inventory.reserve`: Atomically reserve available inventory stock for orders
 - `inventory.receive`: Receive stock shipments (Phase 5)
 - `orders.read` / `orders.confirm`: Orders handling (Phase 6)
 - `fulfillment.pick` / `fulfillment.pack` / `fulfillment.ship`: Order fulfillment (Phase 7)
@@ -105,11 +110,12 @@ Models / Database (MongoDB collections & indexes)
 - `GET /v1/products/{product_id}`: Get product details.
 - `PATCH /v1/products/{product_id}`: Update product metadata or UPC string.
 
-### Inventory State & Movements (`inventory.read`, `inventory.adjust`)
+### Inventory State & Atomic Reservation (`inventory.read`, `inventory.adjust`, `inventory.reserve`)
 - `GET /v1/inventory`: List stock levels (filters: `warehouse_code`, `sku`, `product_id`).
 - `POST /v1/inventory`: Register initial stock for a product at a warehouse.
 - `GET /v1/inventory/{inventory_id}`: Get inventory record state.
 - `PATCH /v1/inventory/{inventory_id}/adjust`: Cycle count adjustment (+/- signed delta, logs movement & user).
+- `POST /v1/inventory/{inventory_id}/reserve`: Atomically reserve stock (`quantity > 0`). Returns 200 OK on success, 409 Conflict if stock is insufficient, 404 if inventory ID does not exist. Logs `RESERVATION` movement with signed `quantity = -requested_quantity`.
 - `GET /v1/inventory/{inventory_id}/movements`: Get historical movement logs for an inventory item.
 
 ---
@@ -156,9 +162,9 @@ OpenAPI docs will be available at `http://localhost:8000/docs`.
 
 ## 7. Testing Strategy & Instructions
 
-The test suite executes against an isolated test database (`whitfield_wms_test`) and validates infrastructure, security, auth API, RBAC, sellers, products, UPC string preservation, warehouse stock isolation, and inventory adjustments.
+The test suite executes against an isolated test database (`whitfield_wms_test`) and validates infrastructure, security, auth API, RBAC, sellers, products, UPC string preservation, warehouse stock isolation, inventory adjustments, atomic reservation APIs, and deterministic concurrency safety.
 
-### Running Complete Test Suite (28 / 28 Tests)
+### Running Complete Test Suite (39 / 39 Tests)
 ```bash
 python -m pytest tests/ -v
 ```
@@ -185,4 +191,10 @@ python -m pytest tests/api/test_product_api.py -v
 
 # Warehouse Inventory & Movement Log Tests
 python -m pytest tests/api/test_inventory_api.py -v
+
+# Reservation API Integration Tests
+python -m pytest tests/api/test_reservation_api.py -v
+
+# Concurrency Safety Tests (asyncio.gather 10x simultaneous reservation requests)
+python -m pytest tests/concurrency/test_concurrent_reservation.py -v
 ```

@@ -19,3 +19,11 @@ class InventoryAdjustmentRequest(BaseModel):
 
     quantity_delta: int = Field(..., description="Signed integer quantity delta (+ for increase, - for decrease)")
     note: Optional[str] = Field(default=None, description="Reason / note for cycle count adjustment")
+
+
+class InventoryReservationRequest(BaseModel):
+    """Request schema for reserving available warehouse inventory stock.
+    Validates positive integer reservation quantity (> 0).
+    """
+
+    quantity: int = Field(..., gt=0, description="Positive integer quantity of stock units to reserve (> 0)")

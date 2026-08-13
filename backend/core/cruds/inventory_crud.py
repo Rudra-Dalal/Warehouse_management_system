@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 from bson import ObjectId
+from pymongo import ReturnDocument
 
 from commons.logger import get_logger
 from core.database.database import DatabaseManager
@@ -143,3 +144,45 @@ class InventoryCRUD:
             doc["_id"] = str(doc["_id"])
             records.append(InventoryModel(**doc))
         return records
+
+    async def reserve_inventory_atomic(
+        self, inventory_id: str, requested_quantity: int
+    ) -> Optional[InventoryModel]:
+        """Atomically reserves stock using a single MongoDB find_one_and_update operation.
+        Ensures availability check and quantity updates happen atomically in the database filter.
+
+        Args:
+            inventory_id (str): Target inventory ObjectId string.
+            requested_quantity (int): Number of units to reserve (> 0).
+
+        Returns:
+            Optional[InventoryModel]: Updated inventory model if successful, None if stock < requested or missing ID.
+        """
+        logger.info(
+            f"Executing InventoryCRUD.reserve_inventory_atomic for ID {inventory_id} "
+            f"requested_quantity={requested_quantity}"
+        )
+        if not ObjectId.is_valid(inventory_id):
+            return None
+
+        result = await self.collection.find_one_and_update(
+            {
+                "_id": ObjectId(inventory_id),
+                "available_quantity": {"$gte": requested_quantity},
+            },
+            {
+                "$inc": {
+                    "available_quantity": -requested_quantity,
+                    "reserved_quantity": requested_quantity,
+                },
+                "$set": {
+                    "updated_at": datetime.now(timezone.utc),
+                },
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+
+        if not result:
+            return None
+        result["_id"] = str(result["_id"])
+        return InventoryModel(**result)

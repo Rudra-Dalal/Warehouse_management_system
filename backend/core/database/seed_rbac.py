@@ -24,6 +24,7 @@ async def seed_rbac_data() -> None:
     initial_permissions = [
         {"name": "inventory.read", "description": "Read inventory quantities and stock levels"},
         {"name": "inventory.adjust", "description": "Adjust stock levels and damaged quantities"},
+        {"name": "inventory.reserve", "description": "Reserve available inventory for orders"},
         {"name": "inventory.receive", "description": "Receive new stock shipments"},
         {"name": "orders.read", "description": "Read order details and status"},
         {"name": "orders.confirm", "description": "Confirm orders and reserve inventory"},
@@ -51,6 +52,7 @@ async def seed_rbac_data() -> None:
     all_perm_ids = list(permission_map.values())
     staff_perm_names = [
         "inventory.read",
+        "inventory.reserve",
         "inventory.receive",
         "orders.read",
         "fulfillment.pick",

@@ -6,6 +6,7 @@ from commons.logger import get_logger
 from core.apis.schemas.requests.inventory_request import (
     InventoryAdjustmentRequest,
     InventoryCreateRequest,
+    InventoryReservationRequest,
 )
 from core.apis.schemas.responses.inventory_response import (
     InventoryMovementResponse,
@@ -313,3 +314,78 @@ class InventoryController:
             )
             for m in movements
         ]
+
+    async def reserve_inventory(
+        self,
+        inventory_id: str,
+        request: InventoryReservationRequest,
+        current_user: UserModel,
+    ) -> InventoryResponse:
+        """Reserves stock using an atomic MongoDB conditional update.
+        Differentiates missing inventory (404) from insufficient stock (409). Logs a RESERVATION movement.
+
+        Args:
+            inventory_id (str): Target inventory ObjectId string.
+            request (InventoryReservationRequest): Positive reservation quantity (> 0).
+            current_user (UserModel): Authenticated user requesting reservation.
+
+        Returns:
+            InventoryResponse: Updated inventory state details.
+        """
+        logger.info(
+            f"Executing InventoryController.reserve_inventory for ID {inventory_id} "
+            f"requested_quantity={request.quantity} by user {current_user.email}"
+        )
+        # Existence lookup for 404 vs 409 classification
+        record = await self.inventory_crud.get_by_id(inventory_id)
+        if not record:
+            logger.warning(f"Inventory reservation failed: ID {inventory_id} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Inventory record with ID '{inventory_id}' not found",
+            )
+
+        # Atomic conditional update (find_one_and_update with available_quantity >= requested_quantity)
+        updated = await self.inventory_crud.reserve_inventory_atomic(
+            inventory_id=inventory_id,
+            requested_quantity=request.quantity,
+        )
+        if not updated:
+            logger.warning(
+                f"Inventory reservation rejected: Insufficient stock for ID {inventory_id} "
+                f"(current available={record.available_quantity}, requested={request.quantity})"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Insufficient inventory available for reservation",
+            )
+
+        # Create historical RESERVATION movement log (signed quantity: -request.quantity)
+        movement_log = InventoryMovementModel(
+            product_id=updated.product_id,
+            warehouse_id=updated.warehouse_id,
+            movement_type="RESERVATION",
+            quantity=-request.quantity,
+            reference_type="RESERVATION",
+            user_id=current_user.id,
+            note=None,
+        )
+        await self.movement_crud.create_movement(movement_log)
+
+        db = DatabaseManager.get_db()
+        product = await self.product_crud.get_by_id(updated.product_id)
+        wh = await db["warehouses"].find_one({"_id": ObjectId(updated.warehouse_id)})
+
+        return InventoryResponse(
+            id=updated.id,
+            product_id=updated.product_id,
+            warehouse_id=updated.warehouse_id,
+            available_quantity=updated.available_quantity,
+            reserved_quantity=updated.reserved_quantity,
+            damaged_quantity=updated.damaged_quantity,
+            sku=product.sku if product else None,
+            product_name=product.name if product else None,
+            warehouse_code=wh["code"] if wh else None,
+            created_at=updated.created_at,
+            updated_at=updated.updated_at,
+        )

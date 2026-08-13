@@ -6,6 +6,7 @@ from commons.logger import get_logger
 from core.apis.schemas.requests.inventory_request import (
     InventoryAdjustmentRequest,
     InventoryCreateRequest,
+    InventoryReservationRequest,
 )
 from core.apis.schemas.responses.inventory_response import (
     InventoryMovementResponse,
@@ -104,6 +105,31 @@ async def adjust_inventory(
     """
     logger.info(f"Calling PATCH /v1/inventory/{inventory_id}/adjust endpoint by {current_user.email}")
     return await inventory_controller.adjust_inventory(
+        inventory_id=inventory_id,
+        request=request,
+        current_user=current_user,
+    )
+
+
+@router.post("/{inventory_id}/reserve", response_model=InventoryResponse)
+async def reserve_inventory(
+    inventory_id: str,
+    request: InventoryReservationRequest,
+    current_user: UserModel = Depends(require_permission("inventory.reserve")),
+):
+    """Atomically reserves stock for orders using an atomic MongoDB conditional update.
+    Requires 'inventory.reserve' permission.
+
+    Args:
+        inventory_id (str): Target inventory ObjectId string.
+        request (InventoryReservationRequest): Positive integer reservation quantity.
+        current_user (UserModel): Authenticated user requesting reservation.
+
+    Returns:
+        InventoryResponse: Updated inventory state response.
+    """
+    logger.info(f"Calling POST /v1/inventory/{inventory_id}/reserve endpoint by {current_user.email}")
+    return await inventory_controller.reserve_inventory(
         inventory_id=inventory_id,
         request=request,
         current_user=current_user,
