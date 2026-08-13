@@ -2,7 +2,7 @@ import datetime
 from typing import List, Optional
 from bson import ObjectId
 from fastapi import HTTPException, status
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from commons.logger import get_logger
 from core.apis.schemas.requests.order_request import OrderCreateRequest
@@ -149,24 +149,11 @@ class OrderController:
                 )
             reservation_items.append({"inventory_id": inv.id, "quantity": item.quantity})
 
-        # 6. Execute atomic multi-item stock reservation (All-or-nothing)
-        try:
-            await self.reservation_service.reserve_multi_items_atomic(
-                items=reservation_items,
-                user_id=current_user.id,
-                reference_type="ORDER",
-                reference_id=None,
-            )
-        except ValueError as val_err:
-            logger.warning(f"Order reservation failed for '{request.order_number}': {val_err}")
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Insufficient inventory available to reserve order '{request.order_number}'",
-            )
-
-        # 7. Persist Confirmed Order Document
+        # Pre-assign Order ObjectId string so reference_id can be passed to reservation movements
+        order_id = str(ObjectId())
         now = datetime.datetime.now(datetime.timezone.utc)
         order_model = OrderModel(
+            id=order_id,
             order_number=request.order_number.strip(),
             seller_id=seller.id,
             warehouse_id=warehouse_id,
@@ -176,10 +163,82 @@ class OrderController:
             confirmed_at=now,
         )
 
+        client = DatabaseManager.client
+        if not client:
+            raise RuntimeError("Database connection not initialized")
+
+        # Determine if multi-document transactions are supported on MongoDB topology (e.g. replica set)
+        has_replset = bool(
+            client.topology_description and client.topology_description.replica_set_name
+        )
+
+        if has_replset:
+            try:
+                async with client.start_session() as session:
+                    await session.start_transaction()
+
+                    # 6. Execute atomic multi-item stock reservation (All-or-nothing)
+                    try:
+                        await self.reservation_service.reserve_multi_items_atomic(
+                            items=reservation_items,
+                            user_id=current_user.id,
+                            reference_type="ORDER",
+                            reference_id=order_id,
+                            session=session,
+                        )
+                    except ValueError as val_err:
+                        await session.abort_transaction()
+                        logger.warning(f"Order reservation failed for '{request.order_number}': {val_err}")
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail=f"Insufficient inventory available to reserve order '{request.order_number}'",
+                        )
+
+                    # 7. Persist Confirmed Order Document
+                    try:
+                        confirmed_order = await self.order_crud.create_order(order_model, session=session)
+                    except DuplicateKeyError:
+                        await session.abort_transaction()
+                        logger.info(f"Duplicate key detected for order_number '{request.order_number}'. Returning existing order.")
+                        existing = await self.order_crud.get_by_order_number(request.order_number)
+                        if existing:
+                            return await self._build_order_response(existing)
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail=f"Order number '{request.order_number}' is currently being processed",
+                        )
+
+                    await session.commit_transaction()
+                    logger.info(f"Successfully created and confirmed order '{request.order_number}' (ID: {confirmed_order.id}) [transactional]")
+                    return await self._build_order_response(confirmed_order)
+            except HTTPException:
+                raise
+            except Exception as err:
+                logger.error(f"Transaction error in create_and_confirm_order: {err}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Order transaction failed: {str(err)}",
+                )
+
+        # Standalone MongoDB deployment (Single-document atomicity backed by MongoDB $inc + UNIQUE order_number index)
         try:
-            confirmed_order = await self.order_crud.create_order(order_model)
+            await self.reservation_service.reserve_multi_items_atomic(
+                items=reservation_items,
+                user_id=current_user.id,
+                reference_type="ORDER",
+                reference_id=order_id,
+                session=None,
+            )
+        except ValueError as val_err:
+            logger.warning(f"Order reservation failed for '{request.order_number}': {val_err}")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Insufficient inventory available to reserve order '{request.order_number}'",
+            )
+
+        try:
+            confirmed_order = await self.order_crud.create_order(order_model, session=None)
         except DuplicateKeyError:
-            # Handle race condition where another worker inserted the same order_number concurrently
             logger.info(f"Duplicate key detected for order_number '{request.order_number}'. Returning existing order.")
             existing = await self.order_crud.get_by_order_number(request.order_number)
             if existing:
@@ -189,7 +248,7 @@ class OrderController:
                 detail=f"Order number '{request.order_number}' is currently being processed",
             )
 
-        logger.info(f"Successfully created and confirmed order '{request.order_number}' (ID: {confirmed_order.id})")
+        logger.info(f"Successfully created and confirmed order '{request.order_number}' (ID: {confirmed_order.id}) [standalone atomic]")
         return await self._build_order_response(confirmed_order)
 
     async def get_order_by_id(self, order_id: str) -> OrderResponse:

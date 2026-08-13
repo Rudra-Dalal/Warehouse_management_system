@@ -13,6 +13,7 @@ from core.cruds.user_crud import UserCRUD
 from core.database.database import DatabaseManager
 from core.models.inventory_model import InventoryModel
 from core.models.product_model import ProductModel
+from core.models.role_model import RoleModel
 from core.models.seller_model import SellerModel
 from core.models.user_model import UserModel
 
@@ -89,13 +90,14 @@ async def test_successful_order_creation_and_reservation():
         assert updated_inv.available_quantity == 15
         assert updated_inv.reserved_quantity == 5
 
-        # Verify Movement log
+        # Verify Movement log with linked reference_id
         mov_crud = InventoryMovementCRUD()
         movements = await mov_crud.list_movements_by_context(product.id, reno_id)
         assert len(movements) == 1
         assert movements[0].movement_type == "RESERVATION"
         assert movements[0].quantity == -5
         assert movements[0].reference_type == "ORDER"
+        assert movements[0].reference_id == data["id"]
 
 
 @pytest.mark.asyncio
@@ -263,6 +265,68 @@ async def test_multi_item_partial_failure_all_or_nothing():
 
 
 @pytest.mark.asyncio
+async def test_single_item_insufficient_inventory_409():
+    """Test 409 Conflict when requesting more quantity than available for a single item."""
+    role_crud = RoleCRUD()
+    admin_role = await role_crud.get_by_name("ADMIN")
+
+    user_crud = UserCRUD()
+    admin = await user_crud.create_user(
+        UserModel(
+            name="Single Insuff Admin",
+            email="single_insuff_admin@example.com",
+            password_hash=hash_password("Pass123!"),
+            role_id=admin_role.id,
+            is_active=True,
+        )
+    )
+    token = create_access_token(subject=admin.id)
+
+    seller_crud = SellerCRUD()
+    seller = await seller_crud.create_seller(
+        SellerModel(code="SINGLE_INSUFF_SELLER", name="Single Insuff Seller")
+    )
+
+    product_crud = ProductCRUD()
+    product = await product_crud.create_product(
+        ProductModel(sku="SINGLE-INSUFF-SKU", name="Single Product", seller_id=seller.id)
+    )
+
+    db = DatabaseManager.get_db()
+    reno = await db["warehouses"].find_one({"code": "RENO"})
+    reno_id = str(reno["_id"])
+
+    inv_crud = InventoryCRUD()
+    inv = await inv_crud.create_inventory(
+        InventoryModel(
+            product_id=product.id,
+            warehouse_id=reno_id,
+            available_quantity=5,
+            reserved_quantity=0,
+        )
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        res = await client.post(
+            "/v1/orders",
+            json={
+                "order_number": "ORD-SINGLE-INSUFF-001",
+                "seller_id": seller.id,
+                "warehouse_code": "RENO",
+                "items": [{"product_id": product.id, "quantity": 10}],
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert res.status_code == 409
+
+        updated_inv = await inv_crud.get_by_id(inv.id)
+        assert updated_inv.available_quantity == 5
+        assert updated_inv.reserved_quantity == 0
+
+
+@pytest.mark.asyncio
 async def test_order_idempotency():
     """Test that submitting an identical order_number twice returns the existing order (HTTP 200) without double reserving stock."""
     role_crud = RoleCRUD()
@@ -417,6 +481,51 @@ async def test_duplicate_order_different_payload():
 
 
 @pytest.mark.asyncio
+async def test_missing_inventory_record_404():
+    """Test 404 Not Found when product exists but no inventory record is registered for the target warehouse."""
+    role_crud = RoleCRUD()
+    admin_role = await role_crud.get_by_name("ADMIN")
+
+    user_crud = UserCRUD()
+    admin = await user_crud.create_user(
+        UserModel(
+            name="Missing Inv Admin",
+            email="missing_inv_admin@example.com",
+            password_hash=hash_password("Pass123!"),
+            role_id=admin_role.id,
+            is_active=True,
+        )
+    )
+    token = create_access_token(subject=admin.id)
+
+    seller_crud = SellerCRUD()
+    seller = await seller_crud.create_seller(
+        SellerModel(code="MISSING_INV_SELLER", name="Missing Inv Seller")
+    )
+
+    product_crud = ProductCRUD()
+    product = await product_crud.create_product(
+        ProductModel(sku="MISSING-INV-SKU", name="Missing Product", seller_id=seller.id)
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        res = await client.post(
+            "/v1/orders",
+            json={
+                "order_number": "ORD-MISSING-INV-001",
+                "seller_id": seller.id,
+                "warehouse_code": "RENO",
+                "items": [{"product_id": product.id, "quantity": 5}],
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert res.status_code == 404
+        assert "Inventory record not found" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_validation_errors_404_and_422():
     """Test 404 Not Found for non-existent seller/warehouse/product and 422 for invalid quantity."""
     role_crud = RoleCRUD()
@@ -498,6 +607,68 @@ async def test_validation_errors_404_and_422():
             headers={"Authorization": f"Bearer {token}"},
         )
         assert res_qty.status_code == 422
+
+        # Empty items list (422)
+        res_empty = await client.post(
+            "/v1/orders",
+            json={
+                "order_number": "ORD-EMPTY-ITEMS",
+                "seller_id": seller.id,
+                "warehouse_code": "RENO",
+                "items": [],
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert res_empty.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_and_unauthorized_access():
+    """Test 401 Unauthorized for unauthenticated requests and 403 Forbidden for users lacking orders permissions."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        # Unauthenticated request (401)
+        res_unauth = await client.post(
+            "/v1/orders",
+            json={
+                "order_number": "ORD-UNAUTH-001",
+                "seller_id": "60d5ec49f1b2c8b1f8c1e001",
+                "warehouse_code": "RENO",
+                "items": [{"product_id": "60d5ec49f1b2c8b1f8c1e003", "quantity": 1}],
+            },
+        )
+        assert res_unauth.status_code == 401
+
+        # User without orders permissions (403)
+        role_crud = RoleCRUD()
+        empty_role = await role_crud.create_role(
+            RoleModel(name="EMPTY_ORDER_ROLE", description="Role with no permissions", permission_ids=[])
+        )
+
+        user_crud = UserCRUD()
+        unauth_user = await user_crud.create_user(
+            UserModel(
+                name="Forbidden Order User",
+                email="forbidden_order_user@example.com",
+                password_hash=hash_password("Pass123!"),
+                role_id=empty_role.id,
+                is_active=True,
+            )
+        )
+        forbidden_token = create_access_token(subject=unauth_user.id)
+
+        res_forbidden = await client.post(
+            "/v1/orders",
+            json={
+                "order_number": "ORD-FORBIDDEN-001",
+                "seller_id": "60d5ec49f1b2c8b1f8c1e001",
+                "warehouse_code": "RENO",
+                "items": [{"product_id": "60d5ec49f1b2c8b1f8c1e003", "quantity": 1}],
+            },
+            headers={"Authorization": f"Bearer {forbidden_token}"},
+        )
+        assert res_forbidden.status_code == 403
 
 
 @pytest.mark.asyncio

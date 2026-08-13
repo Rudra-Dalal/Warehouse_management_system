@@ -47,10 +47,17 @@ class OrderCRUD:
             OrderModel: Persisted order with assigned ObjectId string.
         """
         logger.info(f"Executing OrderCRUD.create_order for order_number '{order.order_number}'")
-        data = order.model_dump(by_alias=True, exclude={"id"})
+        data = order.model_dump(by_alias=True, exclude_none=True)
+
+        if "_id" in data:
+            if isinstance(data["_id"], str) and ObjectId.is_valid(data["_id"]):
+                data["_id"] = ObjectId(data["_id"])
+            elif not isinstance(data["_id"], ObjectId):
+                data.pop("_id")
 
         res = await self.collection.insert_one(data, session=session)
-        order.id = str(res.inserted_id)
+        if not order.id:
+            order.id = str(res.inserted_id)
         return order
 
     async def get_by_id(
