@@ -19,6 +19,9 @@ venv.bak/
 *.log
 logs/
 
+# Local MongoDB runtime data
+backend/.mongo_replset_data/
+
 # Pytest / Coverage
 .pytest_cache/
 .coverage
