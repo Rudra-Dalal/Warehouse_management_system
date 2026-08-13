@@ -1,7 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useEffect, useState } from "react";
-import { inventory, orders, sellers } from "@/lib/wms-data";
 import { NAV, type NavPath } from "./app-shell";
 
 export function CommandPalette({
@@ -35,7 +34,7 @@ export function CommandPalette({
           </span>
           <Command.Input
             autoFocus
-            placeholder="Search SKUs, orders, sellers, pages…"
+            placeholder="Search pages and quick navigation..."
             className="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/70"
           />
           <kbd className="numeric rounded-xs border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
@@ -45,57 +44,15 @@ export function CommandPalette({
 
         <Command.List className="max-h-[52vh] overflow-y-auto p-2">
           <Command.Empty className="px-3 py-8 text-center text-sm text-muted-foreground">
-            No matches in catalog or operations.
+            No matching command or page found.
           </Command.Empty>
 
           <Command.Group
-            heading="Pages"
+            heading="System Pages"
             className="[&_[cmdk-group-heading]]:eyebrow [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-2"
           >
             {NAV.flatMap((s) => s.items).map((item) => (
-              <Item key={item.to} onSelect={() => go(item.to)} label={item.label} meta="Page" />
-            ))}
-          </Command.Group>
-
-          <Command.Group
-            heading="Inventory"
-            className="[&_[cmdk-group-heading]]:eyebrow [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-2"
-          >
-            {inventory.slice(0, 6).map((r) => (
-              <Item
-                key={r.sku}
-                onSelect={() => go("/inventory")}
-                label={r.name}
-                meta={`${r.sku} · ${r.upc}`}
-              />
-            ))}
-          </Command.Group>
-
-          <Command.Group
-            heading="Orders"
-            className="[&_[cmdk-group-heading]]:eyebrow [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-2"
-          >
-            {orders.slice(0, 5).map((o) => (
-              <Item
-                key={o.id}
-                onSelect={() => go("/fulfillment")}
-                label={o.id}
-                meta={`${o.stage} · ${o.warehouse}`}
-              />
-            ))}
-          </Command.Group>
-
-          <Command.Group
-            heading="Sellers"
-            className="[&_[cmdk-group-heading]]:eyebrow [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-2"
-          >
-            {sellers.map((s) => (
-              <Item
-                key={s.id}
-                onSelect={() => go("/sellers")}
-                label={s.name}
-                meta={`${s.id} · ${s.skus} SKUs`}
-              />
+              <Item key={item.to} onSelect={() => go(item.to)} label={item.label} meta="Navigation" />
             ))}
           </Command.Group>
         </Command.List>

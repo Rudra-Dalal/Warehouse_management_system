@@ -3,8 +3,12 @@ import { useRef, useState } from "react";
 import { ScanLine, CornerDownLeft, RotateCcw } from "lucide-react";
 import { AppShell } from "@/components/whitfield/app-shell";
 import { PageHeader, Button, StatusPill, Panel } from "@/components/whitfield/primitives";
-import { inventory, type InventoryRow } from "@/lib/wms-data";
+import { getProductByUpcApi, getProductBySkuApi } from "@/api/products";
+import { getInventoryApi, adjustInventoryApi } from "@/api/inventory";
+import { Product, Inventory, WarehouseId } from "@/types/wms";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { useAuth } from "@/auth/auth-context";
 
 export const Route = createFileRoute("/scanner")({
   head: () => ({
@@ -15,11 +19,6 @@ export const Route = createFileRoute("/scanner")({
         content:
           "Scan or key a UPC to resolve a product and see live availability and reservations in Reno and Columbus.",
       },
-      { property: "og:title", content: "Barcode Scanner — Whitfield Fulfillment" },
-      {
-        property: "og:description",
-        content: "Scan, resolve, act. Instant UPC lookup against live warehouse inventory.",
-      },
     ],
   }),
   component: ScannerPage,
@@ -28,35 +27,102 @@ export const Route = createFileRoute("/scanner")({
 type Phase = "idle" | "resolving" | "found" | "notfound";
 
 function ScannerPage() {
+  const { hasPermission } = useAuth();
+  const canAdjust = hasPermission("inventory:adjust");
+
   const [value, setValue] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
-  const [row, setRow] = useState<InventoryRow | null>(null);
+  const [product, setProduct] = useState<Product | null>(null);
+  const [inventoryList, setInventoryList] = useState<Inventory[]>([]);
+  const [scanStats, setScanStats] = useState({ scans: 0, resolved: 0, mismatches: 0 });
+
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const code = value.trim();
-    if (!code) return;
+    const rawCode = value.trim();
+    if (!rawCode) return;
+
     setPhase("resolving");
-    window.setTimeout(() => {
-      const match = inventory.find(
-        (r) => r.upc === code || r.sku.toLowerCase() === code.toLowerCase(),
-      );
-      if (match) {
-        setRow(match);
-        setPhase("found");
-      } else {
-        setRow(null);
-        setPhase("notfound");
+    setScanStats((prev) => ({ ...prev, scans: prev.scans + 1 }));
+
+    // Normalize leading zeros if barcode scanner strips them
+    const normalizedUpc = rawCode.padStart(12, "0");
+
+    try {
+      let foundProd: Product | null = null;
+
+      // Try UPC lookup first
+      try {
+        foundProd = await getProductByUpcApi(rawCode);
+      } catch {
+        try {
+          foundProd = await getProductByUpcApi(normalizedUpc);
+        } catch {
+          // Fallback to SKU lookup
+          try {
+            foundProd = await getProductBySkuApi(rawCode);
+          } catch {
+            foundProd = null;
+          }
+        }
       }
-    }, 520);
+
+      if (foundProd) {
+        setProduct(foundProd);
+        // Fetch inventory levels
+        const inv = await getInventoryApi({ product_id: foundProd.product_id });
+        setInventoryList(inv);
+        setPhase("found");
+        setScanStats((prev) => ({ ...prev, resolved: prev.resolved + 1 }));
+        toast.success(`Resolved ${foundProd.sku}: ${foundProd.name}`);
+      } else {
+        setProduct(null);
+        setInventoryList([]);
+        setPhase("notfound");
+        setScanStats((prev) => ({ ...prev, mismatches: prev.mismatches + 1 }));
+        toast.error(`No product matches barcode ${rawCode}`);
+      }
+    } catch (err: any) {
+      setProduct(null);
+      setInventoryList([]);
+      setPhase("notfound");
+      setScanStats((prev) => ({ ...prev, mismatches: prev.mismatches + 1 }));
+    }
   };
 
   const reset = () => {
     setValue("");
-    setRow(null);
+    setProduct(null);
+    setInventoryList([]);
     setPhase("idle");
     inputRef.current?.focus();
+  };
+
+  const handleQuickAdjust = async (warehouseId: WarehouseId, quantityDelta: number) => {
+    if (!product) return;
+    try {
+      await adjustInventoryApi({
+        warehouse_id: warehouseId,
+        product_id: product.product_id,
+        quantity_delta: quantityDelta,
+        reason: "Scanner quick count update",
+      });
+      toast.success(`Updated ${warehouseId} stock by ${quantityDelta > 0 ? "+" : ""}${quantityDelta}`);
+      const updatedInv = await getInventoryApi({ product_id: product.product_id });
+      setInventoryList(updatedInv);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to adjust inventory.");
+    }
+  };
+
+  const renoData = inventoryList.find((i) => i.warehouse_id === "RENO") || {
+    quantity_available: 0,
+    quantity_reserved: 0,
+  };
+  const columbusData = inventoryList.find((i) => i.warehouse_id === "COLUMBUS") || {
+    quantity_available: 0,
+    quantity_reserved: 0,
   };
 
   return (
@@ -64,7 +130,7 @@ function ScannerPage() {
       <PageHeader
         eyebrow="Operations"
         title="Barcode Scanner"
-        description="Scan → resolve → product → inventory. Works with a handheld gun or keyboard entry."
+        description="Scan → resolve → product → inventory. Works with a handheld gun or manual keyboard entry."
         actions={
           <Button onClick={reset} variant="ghost">
             <RotateCcw className="size-4" /> Reset
@@ -97,7 +163,7 @@ function ScannerPage() {
                 className={cn(
                   "absolute inset-0 transition-colors duration-300",
                   phase === "found" && "bg-ok/10",
-                  phase === "notfound" && "bg-danger/10",
+                  phase === "notfound" && "bg-danger/10"
                 )}
               />
             </div>
@@ -112,7 +178,7 @@ function ScannerPage() {
                     setValue(e.target.value);
                     if (phase !== "idle") setPhase("idle");
                   }}
-                  placeholder="Scan or enter UPC"
+                  placeholder="Scan or enter UPC / SKU"
                   autoFocus
                   className="numeric h-12 w-full rounded-md border border-border bg-surface pr-10 pl-9 text-sm tracking-[0.08em] transition-colors focus:border-signal focus:outline-none"
                 />
@@ -126,95 +192,93 @@ function ScannerPage() {
                   <span className="pulse-dot">Ready to scan</span>
                 </StatusPill>
               ) : null}
-              {phase === "resolving" ? <StatusPill tone="signal">Resolving…</StatusPill> : null}
+              {phase === "resolving" ? <StatusPill tone="signal">Resolving live API...</StatusPill> : null}
               {phase === "found" ? <StatusPill tone="ok">Product found</StatusPill> : null}
               {phase === "notfound" ? <StatusPill tone="danger">No match</StatusPill> : null}
-              <span className="numeric ml-auto text-[11px] text-muted-foreground">
-                Try 012345678905
-              </span>
             </div>
           </div>
         </section>
 
         {/* Result */}
         <section className="min-h-[320px]">
-          {phase === "found" && row ? (
-            <div key={row.sku} className="anim-rise panel overflow-hidden">
+          {phase === "found" && product ? (
+            <div key={product.product_id} className="anim-rise panel overflow-hidden">
               <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
                 <div>
                   <p className="eyebrow">Product found</p>
-                  <h2 className="mt-2 text-2xl font-semibold tracking-tight">{row.name}</h2>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-tight">{product.name}</h2>
                   <p className="numeric mt-1.5 text-xs text-muted-foreground">
-                    {row.sku} · UPC {row.upc} · {row.seller}
+                    {product.sku} · UPC {product.upc} · Reorder Point: {product.reorder_point}
                   </p>
                 </div>
                 <StatusPill tone="ok">Resolved</StatusPill>
               </div>
 
               <div className="grid sm:grid-cols-2">
-                {(["RENO", "COLUMBUS"] as const).map((w, i) => {
-                  const data = w === "RENO" ? row.reno : row.columbus;
-                  return (
-                    <div
-                      key={w}
-                      className={cn(
-                        "px-5 py-6",
-                        i === 0 ? "border-b border-border sm:border-r sm:border-b-0" : "",
-                      )}
-                      style={{ animationDelay: `${i * 70}ms` }}
-                    >
-                      <p className="numeric text-[11px] tracking-[0.16em] text-muted-foreground uppercase">
-                        {w}
-                      </p>
-                      <div className="mt-4 flex items-end gap-8">
-                        <div>
-                          <div className="numeric text-4xl leading-none font-semibold">
-                            {data.available}
-                          </div>
-                          <div className="mt-2 text-xs text-muted-foreground">available</div>
+                {[
+                  { name: "RENO" as WarehouseId, data: renoData },
+                  { name: "COLUMBUS" as WarehouseId, data: columbusData },
+                ].map((w, i) => (
+                  <div
+                    key={w.name}
+                    className={cn(
+                      "px-5 py-6",
+                      i === 0 ? "border-b border-border sm:border-r sm:border-b-0" : ""
+                    )}
+                  >
+                    <p className="numeric text-[11px] tracking-[0.16em] text-muted-foreground uppercase">
+                      {w.name} HUB
+                    </p>
+                    <div className="mt-4 flex items-end gap-8">
+                      <div>
+                        <div className="numeric text-4xl leading-none font-semibold">
+                          {w.data.quantity_available.toLocaleString()}
                         </div>
-                        <div>
-                          <div className="numeric text-4xl leading-none font-semibold text-muted-foreground">
-                            {data.reserved}
-                          </div>
-                          <div className="mt-2 text-xs text-muted-foreground">reserved</div>
-                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground">available</div>
                       </div>
-                      <div className="mt-5 flex gap-2">
-                        <Button size="sm">Adjust</Button>
-                        <Button size="sm" variant="primary">
-                          Reserve
-                        </Button>
+                      <div>
+                        <div className="numeric text-4xl leading-none font-semibold text-muted-foreground">
+                          {w.data.quantity_reserved.toLocaleString()}
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground">reserved</div>
                       </div>
                     </div>
-                  );
-                })}
+                    {canAdjust ? (
+                      <div className="mt-5 flex gap-2">
+                        <Button size="sm" onClick={() => handleQuickAdjust(w.name, 10)}>
+                          +10 Count
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => handleQuickAdjust(w.name, -1)}>
+                          -1 Count
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
               </div>
             </div>
           ) : null}
 
           {phase === "notfound" ? (
             <div className="anim-rise panel flex flex-col items-center justify-center px-6 py-20 text-center">
-              <p className="eyebrow text-danger">Unresolved code</p>
-              <h2 className="mt-3 text-lg font-semibold">No product matches that UPC</h2>
+              <p className="eyebrow text-danger">Unresolved barcode</p>
+              <h2 className="mt-3 text-lg font-semibold">No product matches that UPC or SKU</h2>
               <p className="mt-1.5 max-w-sm text-sm text-muted-foreground">
-                Confirm the label is intact, then re-scan. Persistent mismatches should be raised
-                against the seller's catalog.
+                Confirm the UPC label is scanned correctly or register the product in master catalog.
               </p>
               <div className="mt-5 flex gap-2">
                 <Button onClick={reset}>Scan again</Button>
-                <Button variant="ghost">Report mismatch</Button>
               </div>
             </div>
           ) : null}
 
           {phase === "idle" || phase === "resolving" ? (
-            <Panel title="Session" meta="This shift">
+            <Panel title="Session Activity" meta="Shift Scans">
               <div className="grid grid-cols-3 divide-x divide-border">
                 {[
-                  ["48", "scans"],
-                  ["46", "resolved"],
-                  ["2", "mismatches"],
+                  [String(scanStats.scans), "scans"],
+                  [String(scanStats.resolved), "resolved"],
+                  [String(scanStats.mismatches), "mismatches"],
                 ].map(([v, l]) => (
                   <div key={l} className="px-5 py-6">
                     <div className="numeric text-2xl leading-none font-semibold">{v}</div>
@@ -224,7 +288,7 @@ function ScannerPage() {
               </div>
               <div className="border-t border-border px-5 py-4">
                 <p className="text-sm text-muted-foreground">
-                  Scanner input is always focused — pull the trigger and the code lands here.
+                  Handheld USB/Bluetooth barcode scanner input automatically feeds into the field.
                 </p>
               </div>
             </Panel>

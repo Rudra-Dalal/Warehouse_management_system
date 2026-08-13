@@ -127,25 +127,48 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
+import { useAuth } from "@/auth/auth-context";
+import { LogOut } from "lucide-react";
+
 function SidebarFooter() {
+  const { user, logout } = useAuth();
+  const initials = user?.full_name
+    ? user.full_name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : "WF";
+
   return (
     <div className="border-t border-sidebar-border px-4 py-3.5">
-      <div className="flex items-center gap-2.5">
-        <span className="grid size-7 place-items-center rounded-full bg-sidebar-accent text-[11px] font-semibold text-sidebar-foreground">
-          RD
-        </span>
-        <span className="min-w-0 flex-1 leading-tight">
-          <span className="block truncate text-xs font-medium text-sidebar-foreground">
-            Rudra Dalal
+      <div className="flex items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-sidebar-accent text-[11px] font-semibold text-sidebar-foreground">
+            {initials}
           </span>
-          <span className="numeric block text-[10px] tracking-wider text-sidebar-muted uppercase">
-            Admin · All warehouses
+          <span className="min-w-0 flex-1 leading-tight">
+            <span className="block truncate text-xs font-medium text-sidebar-foreground">
+              {user?.full_name || user?.username || "Authenticated User"}
+            </span>
+            <span className="numeric block text-[10px] tracking-wider text-sidebar-muted uppercase">
+              {user?.role || "WMS Operational"}
+            </span>
           </span>
-        </span>
+        </div>
+        <button
+          onClick={logout}
+          title="Sign Out"
+          className="text-sidebar-muted hover:text-danger p-1 transition-colors"
+        >
+          <LogOut className="size-4" />
+        </button>
       </div>
     </div>
   );
 }
+
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
