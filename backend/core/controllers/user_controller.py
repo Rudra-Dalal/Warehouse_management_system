@@ -7,6 +7,7 @@ from core.apis.schemas.requests.user_request import UserCreateRequest, UserUpdat
 from core.apis.schemas.responses.user_response import UserResponse
 from core.cruds.permission_crud import PermissionCRUD
 from core.cruds.role_crud import RoleCRUD
+from core.cruds.user_crud import UserCRUD
 from core.models.audit_log_model import AuditAction
 from core.models.user_model import UserModel
 from core.services.audit_service import AuditService

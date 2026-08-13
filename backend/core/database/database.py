@@ -92,3 +92,11 @@ async def seed_fixed_warehouses() -> None:
             logger.info(f"Seeded fixed warehouse: {warehouse_data['code']}")
         else:
             logger.info(f"Fixed warehouse {warehouse_data['code']} already exists")
+
+# Module-level singleton for compatibility with existing imports
+# It reuses the same DatabaseManager class, which is initialized during the FastAPI startup lifecycle.
+# The instance does not create a new MongoClient; it will hold the same client once DatabaseManager.connect_to_database() is called.
+
+db_manager = DatabaseManager()
+
+__all__ = ["DatabaseManager", "db_manager"]

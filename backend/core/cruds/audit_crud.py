@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 from bson import ObjectId
-from core.database.database import db_manager
+from core.database.database import DatabaseManager
 from core.models.audit_log_model import AuditLogModel
 from commons.logger import logger
 
@@ -11,7 +11,8 @@ class AuditCRUD:
     """
 
     def __init__(self):
-        self.collection = db_manager.db["audit_logs"]
+        # Collection will be accessed lazily via DatabaseManager.get_db()
+        pass
 
     async def create_audit_log(
         self, audit_log: AuditLogModel, session=None
@@ -33,7 +34,7 @@ class AuditCRUD:
         if "_id" in doc and doc["_id"] is None:
             del doc["_id"]
 
-        result = await self.collection.insert_one(doc, session=session)
+        result = await DatabaseManager.get_db()["audit_logs"].insert_one(doc, session=session)
         doc["_id"] = str(result.inserted_id)
         return AuditLogModel(**doc)
 
@@ -49,7 +50,7 @@ class AuditCRUD:
         logger.info(f"Executing AuditCRUD.get_by_id: {audit_id}")
         if not ObjectId.is_valid(audit_id):
             return None
-        doc = await self.collection.find_one({"_id": ObjectId(audit_id)})
+        doc = await DatabaseManager.get_db()["audit_logs"].find_one({"_id": ObjectId(audit_id)})
         if not doc:
             return None
         doc["_id"] = str(doc["_id"])
@@ -76,7 +77,7 @@ class AuditCRUD:
             f"limit={limit}, offset={offset}"
         )
         cursor = (
-            self.collection.find(filter_dict)
+            DatabaseManager.get_db()["audit_logs"].find(filter_dict)
             .sort("created_at", -1)
             .skip(offset)
             .limit(limit)
@@ -97,4 +98,4 @@ class AuditCRUD:
             int: Count of matching documents.
         """
         logger.info(f"Executing AuditCRUD.count_audit_logs with filters {filter_dict}")
-        return await self.collection.count_documents(filter_dict)
+        return await DatabaseManager.get_db()["audit_logs"].count_documents(filter_dict)
