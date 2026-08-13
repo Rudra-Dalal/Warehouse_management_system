@@ -19,6 +19,7 @@ from core.database.database import DatabaseManager
 from core.models.inventory_model import InventoryModel
 from core.models.inventory_movement_model import InventoryMovementModel
 from core.models.user_model import UserModel
+from core.services.inventory_reservation_service import InventoryReservationService
 
 logger = get_logger(__name__)
 
@@ -29,10 +30,11 @@ class InventoryController:
     """
 
     def __init__(self):
-        """Initializes InventoryController with Inventory, Product, and Movement CRUD instances."""
+        """Initializes InventoryController with Inventory, Product, Movement CRUDs, and ReservationService."""
         self.inventory_crud = InventoryCRUD()
         self.product_crud = ProductCRUD()
         self.movement_crud = InventoryMovementCRUD()
+        self.reservation_service = InventoryReservationService()
 
     async def list_inventory(
         self,
@@ -321,7 +323,7 @@ class InventoryController:
         request: InventoryReservationRequest,
         current_user: UserModel,
     ) -> InventoryResponse:
-        """Reserves stock using an atomic MongoDB conditional update.
+        """Reserves stock using an atomic MongoDB conditional update via InventoryReservationService.
         Differentiates missing inventory (404) from insufficient stock (409). Logs a RESERVATION movement.
 
         Args:
@@ -345,10 +347,12 @@ class InventoryController:
                 detail=f"Inventory record with ID '{inventory_id}' not found",
             )
 
-        # Atomic conditional update (find_one_and_update with available_quantity >= requested_quantity)
-        updated = await self.inventory_crud.reserve_inventory_atomic(
+        updated = await self.reservation_service.reserve_item_atomic(
             inventory_id=inventory_id,
             requested_quantity=request.quantity,
+            user_id=current_user.id,
+            reference_type="RESERVATION",
+            reference_id=None,
         )
         if not updated:
             logger.warning(
@@ -359,18 +363,6 @@ class InventoryController:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Insufficient inventory available for reservation",
             )
-
-        # Create historical RESERVATION movement log (signed quantity: -request.quantity)
-        movement_log = InventoryMovementModel(
-            product_id=updated.product_id,
-            warehouse_id=updated.warehouse_id,
-            movement_type="RESERVATION",
-            quantity=-request.quantity,
-            reference_type="RESERVATION",
-            user_id=current_user.id,
-            note=None,
-        )
-        await self.movement_crud.create_movement(movement_log)
 
         db = DatabaseManager.get_db()
         product = await self.product_crud.get_by_id(updated.product_id)

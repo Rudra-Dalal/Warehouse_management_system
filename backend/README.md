@@ -17,6 +17,8 @@ API Routers (thin routes, request/response Pydantic models)
      ↓
 Controllers (business logic, security rules, domain orchestration)
      ↓
+Services (InventoryReservationService for shared reservation logic)
+     ↓
 CRUD Wrappers (PyMongo Async database access)
      ↓
 Models / Database (MongoDB collections & indexes)
@@ -24,21 +26,21 @@ Models / Database (MongoDB collections & indexes)
 
 ---
 
-## 2. Domain Relationship (Phase 3, Phase 4 & Phase 5)
+## 2. Domain Relationship (Phase 3, Phase 4, Phase 5 & Phase 6)
 
 ```text
     SELLER
        │
-       │ seller_id
-       ▼
-    PRODUCT ◄─────── RECEIVING SHIPMENT (Inbound)
-       │                    │
-       │ product_id         │ receiving_reference (UNIQUE)
-       ▼                    ▼
-    INVENTORY ───> INVENTORY MOVEMENT (History)
-       │
-       │ warehouse_id
-       ▼
+       ├─── seller_id ───> ORDER (Customer Order)
+       ▼                     │
+    PRODUCT ◄────────────────┼─── order_number (UNIQUE)
+       │                     ▼
+       │ product_id       INVENTORY RESERVATION SERVICE
+       ▼                     │
+    INVENTORY ───────────────┼───> INVENTORY MOVEMENT (RESERVATION)
+       │                     │
+       │ warehouse_id        ▼
+       ▼                  CONFIRMED ORDER
     WAREHOUSE (RENO / COLUMBUS)
 ```
 
@@ -54,20 +56,23 @@ Models / Database (MongoDB collections & indexes)
 6. **Inbound Receiving & Strict Idempotency (Phase 5)**: Inbound inventory receiving (`POST /v1/receiving`) processes shipment receipts with strict idempotency.
    - **Database Unique Constraint**: MongoDB enforces a strict `UNIQUE(receiving_reference)` index.
    - **Zero Double-Counting**: Submitting an identical `receiving_reference` multiple times (network retries, double clicks) returns the existing `ReceivingResponse` (`HTTP 200 OK`) without double-incrementing stock or creating additional movement logs.
-   - **High-Concurrency Guarantee**: If 10 concurrent requests simultaneously submit `"WH-REC-CONC-001"` (+100 units), **exactly 1 receiving shipment is created**, stock is incremented **exactly once (+100)**, and exactly 1 `RECEIVING` movement log is created.
-7. **Non-Negative Stock Invariant**: `available_quantity >= 0` is strictly enforced. Adjustments or reservations exceeding available stock return `HTTP 400 Bad Request` or `HTTP 409 Conflict` respectively.
+7. **Order Management & Shared Reservation Service (Phase 6)**: Order creation (`POST /v1/orders`) validates seller, warehouse, and products, then reserves inventory across all line items using `InventoryReservationService`.
+   - **Reuse of Phase 4 Logic**: Communicates directly through Python service/CRUD abstractions, reusing `InventoryCRUD.reserve_inventory_atomic()` without internal HTTP calls or duplicate reservation code.
+   - **All-or-Nothing Multi-Item Atomicity**: If an order contains multiple line items and any product lacks sufficient stock, **all previously reserved items for that order are rolled back**, returning `HTTP 409 Conflict`. Zero partial reservations occur.
+   - **Order Idempotency**: MongoDB enforces `UNIQUE(order_number)`. Resubmitting an existing `order_number` returns the existing confirmed order (`HTTP 200 OK`) without double-reserving inventory or creating duplicate movement logs.
+8. **Non-Negative Stock Invariant**: `available_quantity >= 0` is strictly enforced. Adjustments or reservations exceeding available stock return `HTTP 400 Bad Request` or `HTTP 409 Conflict` respectively.
 
 > [!NOTE]
-> Orders handling is strictly deferred to **Phase 6**. Order fulfillment is deferred to **Phase 7**.
+> Fulfillment execution (picking, packing, shipping) is strictly deferred to **Phase 7**.
 
 ---
 
-## 3. Security, Roles & Permissions (Phase 2, Phase 3, Phase 4 & Phase 5)
+## 3. Security, Roles & Permissions
 
 ### Roles
 - **`ADMIN`**: Full administrative access (`all permissions`).
 - **`MANAGER`**: Management and operational access (`all permissions`).
-- **`WAREHOUSE_STAFF`**: Operational warehouse access (`inventory.read`, `inventory.reserve`, `inventory.receive`, `orders.read`, `fulfillment.pick`, `fulfillment.pack`, `fulfillment.ship`, `products.read`, `sellers.read`).
+- **`WAREHOUSE_STAFF`**: Operational warehouse access (`inventory.read`, `inventory.reserve`, `inventory.receive`, `orders.read`, `orders.confirm`, `fulfillment.pick`, `fulfillment.pack`, `fulfillment.ship`, `products.read`, `sellers.read`).
 
 ### Permissions List
 - `users.manage`: User account administration
@@ -79,7 +84,8 @@ Models / Database (MongoDB collections & indexes)
 - `inventory.adjust`: Create initial inventory and adjust stock levels
 - `inventory.reserve`: Atomically reserve available inventory stock for orders
 - `inventory.receive`: Receive inbound stock shipments (Phase 5)
-- `orders.read` / `orders.confirm`: Orders handling (Phase 6)
+- `orders.read`: View customer order details and order listing (Phase 6)
+- `orders.confirm`: Create and confirm customer orders with atomic stock reservation (Phase 6)
 - `fulfillment.pick` / `fulfillment.pack` / `fulfillment.ship`: Order fulfillment (Phase 7)
 - `audit.read`: View system audit logs
 
@@ -127,6 +133,11 @@ Models / Database (MongoDB collections & indexes)
 - `GET /v1/receiving`: List receiving shipments (optional `warehouse_code` or `seller_id` filters).
 - `GET /v1/receiving/{receiving_id}`: Get detailed receiving shipment information.
 
+### Customer Order Management (`orders.confirm`, `orders.read`)
+- `POST /v1/orders`: Create and confirm customer order (single/multi-product). Atomically reserves stock across all line items under all-or-nothing semantics. Enforces `UNIQUE(order_number)` idempotency.
+- `GET /v1/orders`: List customer orders (optional `warehouse_code`, `seller_id`, or `status` filters).
+- `GET /v1/orders/{order_id}`: Get detailed order information.
+
 ---
 
 ## 5. Environment Configuration
@@ -171,9 +182,9 @@ OpenAPI docs will be available at `http://localhost:8000/docs`.
 
 ## 7. Testing Strategy & Instructions
 
-The test suite executes against an isolated test database (`whitfield_wms_test`) and validates infrastructure, security, auth API, RBAC, sellers, products, UPC string preservation, warehouse stock isolation, inventory adjustments, atomic reservation APIs, inbound receiving idempotency, and deterministic concurrency safety.
+The test suite executes against an isolated test database (`whitfield_wms_test`) and validates infrastructure, security, auth API, RBAC, sellers, products, UPC string preservation, warehouse stock isolation, inventory adjustments, atomic reservation APIs, inbound receiving idempotency, customer order management, and deterministic concurrency safety.
 
-### Running Complete Test Suite (46 / 46 Tests)
+### Running Complete Test Suite (56 / 56 Tests)
 ```bash
 python -m pytest tests/ -v
 ```
@@ -212,4 +223,10 @@ python -m pytest tests/api/test_receiving_api.py -v
 
 # Receiving Concurrency & Duplicate Protection Tests (10x simultaneous duplicate shipments)
 python -m pytest tests/concurrency/test_concurrent_receiving.py -v
+
+# Customer Order API Integration Tests
+python -m pytest tests/api/test_order_api.py -v
+
+# Customer Order Concurrency Safety Tests (10x simultaneous order requests)
+python -m pytest tests/concurrency/test_concurrent_orders.py -v
 ```
