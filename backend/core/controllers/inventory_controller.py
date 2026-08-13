@@ -135,7 +135,9 @@ class InventoryController:
             updated_at=record.updated_at,
         )
 
-    async def create_inventory(self, request: InventoryCreateRequest) -> InventoryResponse:
+    async def create_inventory(
+        self, request: InventoryCreateRequest, current_user: Optional[UserModel] = None
+    ) -> InventoryResponse:
         """Registers a new warehouse inventory record for a Product and Warehouse.
         Validates product and warehouse existence and composite product+warehouse uniqueness.
 

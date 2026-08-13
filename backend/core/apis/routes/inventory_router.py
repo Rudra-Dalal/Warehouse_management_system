@@ -64,7 +64,7 @@ async def create_inventory(
         InventoryResponse: The created inventory details.
     """
     logger.info(f"Calling POST /v1/inventory endpoint by {current_user.email}")
-    return await inventory_controller.create_inventory(request)
+    return await inventory_controller.create_inventory(request, current_user=current_user)
 
 
 @router.get("/{inventory_id}", response_model=InventoryResponse)
