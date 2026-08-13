@@ -170,87 +170,152 @@ class OrderController:
         if not client:
             raise RuntimeError("Database connection not initialized")
 
-        max_retries = 5
-        for attempt in range(max_retries):
-            async with client.start_session() as session:
-                try:
-                    await session.start_transaction()
-
-                    # 6. Reserve ALL inventory and log movements inside transaction session
+        if DatabaseManager.is_transaction_supported():
+            max_retries = 5
+            for attempt in range(max_retries):
+                async with client.start_session() as session:
                     try:
-                        await self.reservation_service.reserve_multi_items_atomic(
-                            items=reservation_items,
-                            user_id=current_user.id,
-                            reference_type="ORDER",
-                            reference_id=order_id,
-                            session=session,
-                        )
-                    except ValueError as val_err:
-                        await session.abort_transaction()
-                        logger.warning(f"Order reservation failed for '{request.order_number}': {val_err}")
+                        await session.start_transaction()
+
+                        # 6. Reserve ALL inventory and log movements inside transaction session
+                        try:
+                            await self.reservation_service.reserve_multi_items_atomic(
+                                items=reservation_items,
+                                user_id=current_user.id,
+                                reference_type="ORDER",
+                                reference_id=order_id,
+                                session=session,
+                            )
+                        except ValueError as val_err:
+                            await session.abort_transaction()
+                            logger.warning(f"Order reservation failed for '{request.order_number}': {val_err}")
+                            raise HTTPException(
+                                status_code=status.HTTP_409_CONFLICT,
+                                detail=f"Insufficient inventory available to reserve order '{request.order_number}'",
+                            )
+
+                        # 7. Persist Confirmed Order Document inside transaction session
+                        try:
+                            confirmed_order = await self.order_crud.create_order(order_model, session=session)
+                        except DuplicateKeyError:
+                            await session.abort_transaction()
+                            logger.info(f"Duplicate key detected for order_number '{request.order_number}'. Returning existing order.")
+                            existing = await self.order_crud.get_by_order_number(request.order_number)
+                            if existing:
+                                return await self._build_order_response(existing)
+                            raise HTTPException(
+                                status_code=status.HTTP_409_CONFLICT,
+                                detail=f"Order number '{request.order_number}' is currently being processed",
+                            )
+
+                        await session.commit_transaction()
+                        logger.info(f"Successfully created and confirmed order '{request.order_number}' (ID: {confirmed_order.id}) [transactional]")
+                        return await self._build_order_response(confirmed_order)
+
+                    except OperationFailure as op_err:
+                        try:
+                            await session.abort_transaction()
+                        except Exception:
+                            pass
+
+                        # Targeted retry ONLY for TransientTransactionError / WriteConflict (code 112)
+                        is_transient = op_err.has_error_label("TransientTransactionError") or op_err.code == 112
+                        if is_transient and attempt < max_retries - 1:
+                            logger.warning(
+                                f"Transient transaction WriteConflict for '{request.order_number}' on attempt {attempt+1}. Retrying..."
+                            )
+                            await asyncio.sleep(0.02 * (2 ** attempt))
+                            continue
+
+                        logger.warning(f"Transaction conflict/failure for '{request.order_number}': {op_err}")
                         raise HTTPException(
                             status_code=status.HTTP_409_CONFLICT,
-                            detail=f"Insufficient inventory available to reserve order '{request.order_number}'",
+                            detail=f"Concurrent inventory reservation conflict for order '{request.order_number}'",
                         )
-
-                    # 7. Persist Confirmed Order Document inside transaction session
-                    try:
-                        confirmed_order = await self.order_crud.create_order(order_model, session=session)
-                    except DuplicateKeyError:
-                        await session.abort_transaction()
-                        logger.info(f"Duplicate key detected for order_number '{request.order_number}'. Returning existing order.")
-                        existing = await self.order_crud.get_by_order_number(request.order_number)
-                        if existing:
-                            return await self._build_order_response(existing)
-                        raise HTTPException(
-                            status_code=status.HTTP_409_CONFLICT,
-                            detail=f"Order number '{request.order_number}' is currently being processed",
-                        )
-
-                    await session.commit_transaction()
-                    logger.info(f"Successfully created and confirmed order '{request.order_number}' (ID: {confirmed_order.id}) [transactional]")
-                    return await self._build_order_response(confirmed_order)
-
-                except OperationFailure as op_err:
-                    try:
-                        await session.abort_transaction()
-                    except Exception:
-                        pass
-                    if op_err.code == 20 or "Transaction numbers" in str(op_err):
-                        logger.error(
-                            "MongoDB deployment does not support multi-document transactions (OperationFailure code 20)."
-                        )
+                    except Exception as err:
+                        try:
+                            await session.abort_transaction()
+                        except Exception:
+                            pass
+                        if isinstance(err, HTTPException):
+                            raise err
+                        logger.error(f"Transaction error in create_and_confirm_order: {err}")
                         raise HTTPException(
                             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail="Multi-document transaction support is unavailable on this MongoDB deployment. Please deploy MongoDB with a Replica Set.",
+                            detail="Order transaction failed",
                         )
 
-                    # Targeted retry ONLY for TransientTransactionError / WriteConflict (code 112)
-                    is_transient = op_err.has_error_label("TransientTransactionError") or op_err.code == 112
-                    if is_transient and attempt < max_retries - 1:
-                        logger.warning(
-                            f"Transient transaction WriteConflict for '{request.order_number}' on attempt {attempt+1}. Retrying..."
-                        )
-                        await asyncio.sleep(0.02 * (2 ** attempt))
-                        continue
+        # Standalone MongoDB deployment fallback
+        try:
+            await self.reservation_service.reserve_multi_items_atomic(
+                items=reservation_items,
+                user_id=current_user.id,
+                reference_type="ORDER",
+                reference_id=order_id,
+                session=None,
+            )
+        except ValueError as val_err:
+            logger.warning(f"Order reservation failed for '{request.order_number}': {val_err}")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Insufficient inventory available to reserve order '{request.order_number}'",
+            )
+        except Exception as err:
+            logger.error(f"Error during order reservation for '{request.order_number}': {err}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Order reservation failed: {str(err)}",
+            )
 
-                    logger.warning(f"Transaction conflict/failure for '{request.order_number}': {op_err}")
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail=f"Concurrent inventory reservation conflict for order '{request.order_number}'",
+        try:
+            confirmed_order = await self.order_crud.create_order(order_model, session=None)
+        except DuplicateKeyError:
+            logger.info(f"Duplicate key detected for order_number '{request.order_number}'. Returning existing order.")
+            # Unreserve duplicate stock reservations made in standalone fallback
+            for item in request.items:
+                inv = await self.inventory_crud.get_by_product_and_warehouse(
+                    product_id=item.product_id,
+                    warehouse_id=warehouse_id,
+                )
+                if inv:
+                    await self.inventory_crud.unreserve_inventory_atomic(
+                        inventory_id=inv.id,
+                        quantity=item.quantity,
                     )
-                except Exception as err:
-                    try:
-                        await session.abort_transaction()
-                    except Exception:
-                        pass
-                    if isinstance(err, HTTPException):
-                        raise err
-                    logger.error(f"Transaction error in create_and_confirm_order: {err}")
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Order transaction failed",
+            await DatabaseManager.get_db()["inventory_movements"].delete_many(
+                {"reference_type": "ORDER", "reference_id": order_id}
+            )
+
+            existing = await self.order_crud.get_by_order_number(request.order_number)
+            if existing:
+                return await self._build_order_response(existing)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Order number '{request.order_number}' is currently being processed",
+            )
+        except Exception as err:
+            logger.error(f"Order persistence failed for '{request.order_number}', rolling back reservations: {err}")
+            for item in request.items:
+                inv = await self.inventory_crud.get_by_product_and_warehouse(
+                    product_id=item.product_id,
+                    warehouse_id=warehouse_id,
+                )
+                if inv:
+                    await self.inventory_crud.unreserve_inventory_atomic(
+                        inventory_id=inv.id,
+                        quantity=item.quantity,
                     )
+            # Delete movement logs recorded for this order ID during standalone fallback
+            await DatabaseManager.get_db()["inventory_movements"].delete_many(
+                {"reference_type": "ORDER", "reference_id": order_id}
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Order persistence failed: {str(err)}",
+            )
+
+        logger.info(f"Successfully created and confirmed order '{request.order_number}' (ID: {confirmed_order.id}) [non-transactional fallback]")
+        return await self._build_order_response(confirmed_order)
 
     async def get_order_by_id(self, order_id: str) -> OrderResponse:
         """Retrieves order details by ObjectId string.

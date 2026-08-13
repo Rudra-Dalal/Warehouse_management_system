@@ -1,4 +1,5 @@
 from typing import List
+from bson import ObjectId
 from commons.logger import get_logger
 from core.database.database import DatabaseManager
 from core.models.inventory_movement_model import InventoryMovementModel
@@ -19,6 +20,22 @@ class InventoryMovementCRUD:
             AsyncCollection: The MongoDB inventory_movements collection object.
         """
         return DatabaseManager.get_db()["inventory_movements"]
+
+    async def delete_movement_by_id(self, movement_id: str, session=None) -> bool:
+        """Deletes an inventory movement record by ObjectId string (used during non-transactional rollback).
+
+        Args:
+            movement_id (str): Movement log ObjectId string.
+            session (Optional[AsyncClientSession]): Active MongoDB transaction session.
+
+        Returns:
+            bool: True if deleted, False otherwise.
+        """
+        logger.info(f"Executing InventoryMovementCRUD.delete_movement_by_id for {movement_id}")
+        if not ObjectId.is_valid(movement_id):
+            return False
+        res = await self.collection.delete_one({"_id": ObjectId(movement_id)}, session=session)
+        return res.deleted_count > 0
 
     async def create_movement(
         self,

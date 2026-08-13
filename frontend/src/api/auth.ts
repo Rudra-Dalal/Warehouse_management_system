@@ -4,10 +4,10 @@
  */
 
 import { api } from "./client";
-import { User, Permission } from "@/types/wms";
+import { User } from "@/types/wms";
 
 export interface LoginPayload {
-  username: string; // backend login expects username or email
+  username: string; // Accepts email or username string
   password: string;
 }
 
@@ -18,7 +18,11 @@ export interface LoginResponse {
 }
 
 export async function loginApi(credentials: LoginPayload): Promise<LoginResponse> {
-  return api.post<LoginResponse>("/v1/auth/login", credentials, { skipAuth: true });
+  const body = {
+    email: credentials.username,
+    password: credentials.password,
+  };
+  return api.post<LoginResponse>("/v1/auth/login", body, { skipAuth: true });
 }
 
 export async function getCurrentUserApi(): Promise<User> {

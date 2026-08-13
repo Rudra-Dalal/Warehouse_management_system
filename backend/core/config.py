@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     Loads values from environment variables or local .env file.
     """
 
-    MONGODB_URL: str = "mongodb://127.0.0.1:27018/?directConnection=true"
+    MONGODB_URL: str = "mongodb://127.0.0.1:27017"
     DATABASE_NAME: str = "whitfield_wms"
     JWT_SECRET: str = "change-this-secret-in-environment"
     JWT_ALGORITHM: str = "HS256"

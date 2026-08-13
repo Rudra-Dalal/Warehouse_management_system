@@ -239,6 +239,52 @@ class InventoryCRUD:
         result["_id"] = str(result["_id"])
         return InventoryModel(**result)
 
+    async def unreserve_inventory_atomic(
+        self,
+        inventory_id: str,
+        quantity: int,
+        session=None,
+    ) -> Optional[InventoryModel]:
+        """Atomically unreserves stock by moving quantity back from reserved_quantity to available_quantity.
+
+        Args:
+            inventory_id (str): Target inventory ObjectId string.
+            quantity (int): Number of reserved units to unreserve (> 0).
+            session (Optional[AsyncClientSession]): Active MongoDB transaction session.
+
+        Returns:
+            Optional[InventoryModel]: Updated inventory model if successful, None if invalid or reserved stock < quantity.
+        """
+        logger.info(
+            f"Executing InventoryCRUD.unreserve_inventory_atomic for ID {inventory_id} "
+            f"quantity={quantity}"
+        )
+        if quantity <= 0 or not ObjectId.is_valid(inventory_id):
+            return None
+
+        result = await self.collection.find_one_and_update(
+            {
+                "_id": ObjectId(inventory_id),
+                "reserved_quantity": {"$gte": quantity},
+            },
+            {
+                "$inc": {
+                    "available_quantity": quantity,
+                    "reserved_quantity": -quantity,
+                },
+                "$set": {
+                    "updated_at": datetime.now(timezone.utc),
+                },
+            },
+            return_document=ReturnDocument.AFTER,
+            session=session,
+        )
+
+        if not result:
+            return None
+        result["_id"] = str(result["_id"])
+        return InventoryModel(**result)
+
     async def increment_inventory_atomic(
         self,
         product_id: str,

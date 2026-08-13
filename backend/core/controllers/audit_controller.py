@@ -54,7 +54,7 @@ class AuditController:
             limit=limit,
             offset=offset,
         )
-        return [AuditResponse(**r.model_dump(by_alias=True)) for r in records]
+        return [AuditResponse(**r.model_dump()) for r in records]
 
     async def get_audit_log(self, audit_id: str) -> AuditResponse:
         """Retrieves a single audit log by ID."""
@@ -63,9 +63,9 @@ class AuditController:
         if not audit_log:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Audit record with ID '{audit_id}' not found",
+                detail=f"Audit log entry with ID '{audit_id}' not found",
             )
-        return AuditResponse(**audit_log.model_dump(by_alias=True))
+        return AuditResponse(**audit_log.model_dump())
 
     async def get_entity_history(
         self, entity_type: str, entity_id: str, limit: int = 50, offset: int = 0

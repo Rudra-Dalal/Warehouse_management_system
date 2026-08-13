@@ -376,7 +376,7 @@ class InventoryController:
                 detail=f"Inventory record with ID '{inventory_id}' not found",
             )
 
-        updated = await self.reservation_service.reserve_item_atomic(
+        updated, _ = await self.reservation_service.reserve_item_atomic(
             inventory_id=inventory_id,
             requested_quantity=request.quantity,
             user_id=current_user.id,
@@ -410,3 +410,40 @@ class InventoryController:
             created_at=updated.created_at,
             updated_at=updated.updated_at,
         )
+
+    async def list_movements(self, inventory_id: str) -> List[InventoryMovementResponse]:
+        """Retrieves historical InventoryMovement change logs for an inventory context.
+        Raises HTTP 404 Not Found if inventory record does not exist.
+        """
+        logger.info(f"Executing InventoryController.list_movements for {inventory_id}")
+        record = await self.inventory_crud.get_by_id(inventory_id)
+        if not record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Inventory record with ID '{inventory_id}' not found",
+            )
+        movements = await self.movement_crud.list_movements_by_context(
+            product_id=record.product_id, warehouse_id=record.warehouse_id
+        )
+        db = DatabaseManager.get_db()
+        product = await self.product_crud.get_by_id(record.product_id)
+        wh = await db["warehouses"].find_one({"_id": ObjectId(record.warehouse_id)})
+
+        return [
+            InventoryMovementResponse(
+                id=m.id,
+                product_id=m.product_id,
+                warehouse_id=m.warehouse_id,
+                quantity=m.quantity,
+                movement_type=m.movement_type,
+                reference_type=m.reference_type,
+                reference_id=m.reference_id,
+                user_id=m.user_id,
+                created_at=m.created_at,
+                sku=product.sku if product else None,
+                product_name=product.name if product else None,
+                warehouse_code=wh["code"] if wh else None,
+            )
+            for m in movements
+        ]
+

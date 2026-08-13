@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from commons.logger import get_logger
 from core.cruds.inventory_crud import InventoryCRUD
 from core.cruds.inventory_movement_crud import InventoryMovementCRUD
@@ -23,7 +23,7 @@ class InventoryReservationService:
         reference_type: str = "RESERVATION",
         reference_id: Optional[str] = None,
         session=None,
-    ) -> Optional[InventoryModel]:
+    ) -> Tuple[Optional[InventoryModel], Optional[InventoryMovementModel]]:
         """Atomically reserves stock for a single inventory record using Phase 4 find_one_and_update.
 
         Args:
@@ -35,7 +35,7 @@ class InventoryReservationService:
             session (Optional[AsyncClientSession]): Active MongoDB transaction session.
 
         Returns:
-            Optional[InventoryModel]: Updated inventory model if successful, None if insufficient stock.
+            Tuple[Optional[InventoryModel], Optional[InventoryMovementModel]]: Updated inventory model and created movement log.
         """
         logger.info(
             f"Executing InventoryReservationService.reserve_item_atomic for inv {inventory_id} "
@@ -44,7 +44,7 @@ class InventoryReservationService:
 
         if requested_quantity <= 0:
             logger.warning(f"Invalid requested quantity '{requested_quantity}' <= 0 rejected")
-            return None
+            return None, None
 
         # Pass session handle to InventoryCRUD for transaction participation
         updated_inv = await self.inventory_crud.reserve_inventory_atomic(
@@ -54,23 +54,33 @@ class InventoryReservationService:
         )
 
         if not updated_inv:
-            return None
+            return None, None
 
         # Log RESERVATION movement with signed negative delta in the same session
-        await self.inventory_movement_crud.create_movement(
-            movement=InventoryMovementModel(
-                product_id=updated_inv.product_id,
-                warehouse_id=updated_inv.warehouse_id,
-                movement_type="RESERVATION",
-                quantity=-requested_quantity,
-                reference_type=reference_type,
-                reference_id=reference_id,
-                user_id=user_id,
-            ),
-            session=session,
-        )
+        try:
+            movement = await self.inventory_movement_crud.create_movement(
+                movement=InventoryMovementModel(
+                    product_id=updated_inv.product_id,
+                    warehouse_id=updated_inv.warehouse_id,
+                    movement_type="RESERVATION",
+                    quantity=-requested_quantity,
+                    reference_type=reference_type,
+                    reference_id=reference_id,
+                    user_id=user_id,
+                ),
+                session=session,
+            )
+        except Exception as err:
+            logger.error(f"Failed to log movement for inv {inventory_id}: {err}")
+            if session is None:
+                await self.inventory_crud.unreserve_inventory_atomic(
+                    inventory_id=inventory_id,
+                    quantity=requested_quantity,
+                    session=None,
+                )
+            raise err
 
-        return updated_inv
+        return updated_inv, movement
 
     async def reserve_multi_items_atomic(
         self,
@@ -97,26 +107,63 @@ class InventoryReservationService:
         """
         logger.info(f"Executing InventoryReservationService.reserve_multi_items_atomic for {len(items)} items")
         reserved_records = []
+        successful_reservations = []
 
         for item_data in items:
             inv_id = item_data["inventory_id"]
             qty = item_data["quantity"]
 
-            updated_inv = await self.reserve_item_atomic(
-                inventory_id=inv_id,
-                requested_quantity=qty,
-                user_id=user_id,
-                reference_type=reference_type,
-                reference_id=reference_id,
-                session=session,
-            )
+            try:
+                updated_inv, mov = await self.reserve_item_atomic(
+                    inventory_id=inv_id,
+                    requested_quantity=qty,
+                    user_id=user_id,
+                    reference_type=reference_type,
+                    reference_id=reference_id,
+                    session=session,
+                )
+            except Exception as err:
+                if session is None and successful_reservations:
+                    logger.info("Rolling back non-transactional partial reservations due to exception...")
+                    for prev_inv_id, prev_qty, prev_mov_id in successful_reservations:
+                        await self.inventory_crud.unreserve_inventory_atomic(
+                            inventory_id=prev_inv_id,
+                            quantity=prev_qty,
+                            session=None,
+                        )
+                        if prev_mov_id:
+                            try:
+                                await self.inventory_movement_crud.delete_movement_by_id(
+                                    movement_id=prev_mov_id,
+                                    session=None,
+                                )
+                            except Exception:
+                                pass
+                raise err
 
             if not updated_inv:
                 logger.warning(
                     f"Multi-item reservation failed on inventory {inv_id}. Raising ValueError for transaction abort."
                 )
+                if session is None and successful_reservations:
+                    logger.info("Rolling back non-transactional partial reservations and movement logs...")
+                    for prev_inv_id, prev_qty, prev_mov_id in successful_reservations:
+                        await self.inventory_crud.unreserve_inventory_atomic(
+                            inventory_id=prev_inv_id,
+                            quantity=prev_qty,
+                            session=None,
+                        )
+                        if prev_mov_id:
+                            try:
+                                await self.inventory_movement_crud.delete_movement_by_id(
+                                    movement_id=prev_mov_id,
+                                    session=None,
+                                )
+                            except Exception:
+                                pass
                 raise ValueError(f"Insufficient available stock for inventory ID '{inv_id}'")
 
             reserved_records.append(updated_inv)
+            successful_reservations.append((inv_id, qty, mov.id if mov else None))
 
         return reserved_records

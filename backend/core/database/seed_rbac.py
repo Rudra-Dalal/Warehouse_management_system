@@ -66,12 +66,22 @@ async def seed_rbac_data() -> None:
         "sellers.read",
     ]
     staff_perm_ids = [permission_map[name] for name in staff_perm_names if name in permission_map]
+    readonly_perm_names = [
+        "inventory.read",
+        "orders.read",
+        "fulfillment.read",
+        "audit.read",
+        "products.read",
+        "sellers.read",
+    ]
+    readonly_perm_ids = [permission_map[name] for name in readonly_perm_names if name in permission_map]
 
     # Initial Roles Definition
     roles_definitions = [
         {"name": "ADMIN", "description": "System Administrator with unrestricted access", "permission_ids": all_perm_ids},
         {"name": "MANAGER", "description": "Warehouse Manager with operational and management access", "permission_ids": all_perm_ids},
         {"name": "WAREHOUSE_STAFF", "description": "Warehouse Staff with operational access", "permission_ids": staff_perm_ids},
+        {"name": "READ_ONLY", "description": "Read-only access to operations and data", "permission_ids": readonly_perm_ids},
     ]
 
     admin_role_id = None
@@ -95,20 +105,25 @@ async def seed_rbac_data() -> None:
                     {"$set": {"permission_ids": updated_perm_ids}},
                 )
 
-    # Optional Development Admin User Seeding
-    if settings.ADMIN_EMAIL and settings.ADMIN_PASSWORD and admin_role_id:
-        admin_email = settings.ADMIN_EMAIL.lower().strip()
-        existing_admin = await user_crud.get_by_email(admin_email)
-        if not existing_admin:
-            hashed_pwd = hash_password(settings.ADMIN_PASSWORD)
-            admin_user = UserModel(
-                name="System Administrator",
-                email=admin_email,
-                password_hash=hashed_pwd,
-                role_id=admin_role_id,
+    # Seed Default WMS Accounts
+    default_accounts = [
+        ("admin@whitfield.com", "Admin123!", "System Administrator", "ADMIN"),
+        ("manager@whitfield.com", "Manager123!", "Warehouse Manager", "MANAGER"),
+        ("clerk@whitfield.com", "Clerk123!", "Inventory Clerk", "WAREHOUSE_STAFF"),
+        ("readonly@whitfield.com", "Readonly123!", "Read Only Viewer", "READ_ONLY"),
+    ]
+
+    for email, pwd, name, role_name in default_accounts:
+        existing = await user_crud.get_by_email(email)
+        role = await role_crud.get_by_name(role_name)
+        if not existing and role:
+            user = UserModel(
+                name=name,
+                email=email,
+                password_hash=hash_password(pwd),
+                role_id=role.id,
                 is_active=True,
             )
-            await user_crud.create_user(admin_user)
-            logger.info(f"Seeded development admin user: {admin_email}")
-        else:
-            logger.info(f"Development admin user {admin_email} already exists")
+            await user_crud.create_user(user)
+            logger.info(f"Seeded user account: {email}")
+

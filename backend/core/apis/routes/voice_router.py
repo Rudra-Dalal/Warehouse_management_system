@@ -7,7 +7,12 @@ from core.cruds.product_crud import ProductCRUD
 from core.cruds.inventory_crud import InventoryCRUD
 from core.cruds.order_crud import OrderCRUD
 from core.cruds.audit_crud import AuditCRUD
+from core.cruds.role_crud import RoleCRUD
+from core.cruds.permission_crud import PermissionCRUD
 
+from core.apis.schemas.requests.inventory_request import InventoryAdjustmentRequest
+from core.controllers.inventory_controller import InventoryController
+from core.database.database import DatabaseManager
 from core.models.user_model import UserModel
 
 logger = get_logger(__name__)
@@ -18,6 +23,7 @@ product_crud = ProductCRUD()
 inventory_crud = InventoryCRUD()
 order_crud = OrderCRUD()
 audit_crud = AuditCRUD()
+inventory_controller = InventoryController()
 
 
 @router.post("/command", response_model=VoiceCommandResponse)
@@ -70,8 +76,8 @@ async def process_voice_command(
                 "inventory": [
                     {
                         "warehouse_id": item.warehouse_id,
-                        "available": item.quantity_available,
-                        "reserved": item.quantity_reserved,
+                        "available": item.available_quantity,
+                        "reserved": item.reserved_quantity,
                     }
                     for item in inv_list
                 ],
@@ -84,7 +90,7 @@ async def process_voice_command(
             )
         else:
             inv_list = await inventory_crud.list_inventory(warehouse_id=warehouse_id)
-            total_avail = sum(i.quantity_available for i in inv_list)
+            total_avail = sum(i.available_quantity for i in inv_list)
             return VoiceCommandResponse(
                 intent=intent,
                 status="success",
@@ -151,10 +157,15 @@ async def process_voice_command(
 
     # Intent: Mutating Adjust Inventory
     elif intent == "adjust_inventory":
-        if "inventory:adjust" not in current_user.permissions:
+        role_crud = RoleCRUD()
+        role = await role_crud.get_by_id(current_user.role_id)
+        permission_crud = PermissionCRUD()
+        permissions = await permission_crud.get_by_ids(role.permission_ids) if role else []
+        perm_names = [p.name for p in permissions]
+        if "inventory.adjust" not in perm_names:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Permission denied: 'inventory:adjust' required for voice stock adjustments.",
+                detail="Permission denied: 'inventory.adjust' required for voice stock adjustments.",
             )
 
         sku = entities.get("sku")
@@ -169,30 +180,34 @@ async def process_voice_command(
                 message=f"Product with SKU {sku} not found for adjustment.",
             )
 
-        updated_inv = await inventory_crud.adjust_stock(
-            warehouse_id=warehouse_id,
-            product_id=str(product.id),
-            quantity_delta=quantity_delta,
-            user_id=str(current_user.id),
-            reason=f"Voice AI Command: {request.transcript}",
-        )
+        db = DatabaseManager.get_db()
+        wh = await db["warehouses"].find_one({"code": warehouse_id})
+        wh_id = str(wh["_id"]) if wh else warehouse_id
 
-        await audit_crud.log_event(
-            entity_type="INVENTORY",
-            entity_id=str(updated_inv.id),
-            action="VOICE_ADJUST_STOCK",
-            user_id=str(current_user.id),
-            warehouse_id=warehouse_id,
-            metadata={"transcript": request.transcript, "delta": quantity_delta},
+        inv_rec = await inventory_crud.get_by_product_and_warehouse(str(product.id), wh_id)
+        if not inv_rec:
+            return VoiceCommandResponse(
+                intent=intent,
+                status="error",
+                message=f"Inventory record for SKU {sku} at warehouse {warehouse_id} not found.",
+            )
+
+        updated_inv = await inventory_controller.adjust_inventory(
+            inventory_id=inv_rec.id,
+            request=InventoryAdjustmentRequest(
+                quantity_delta=quantity_delta,
+                note=f"Voice AI Command: {request.transcript}",
+            ),
+            current_user=current_user,
         )
 
         return VoiceCommandResponse(
             intent=intent,
             status="success",
-            message=f"Adjusted stock for {product.name} ({warehouse_id}) by {quantity_delta}. New available: {updated_inv.quantity_available}.",
+            message=f"Adjusted stock for {product.name} ({warehouse_id}) by {quantity_delta}. New available: {updated_inv.available_quantity}.",
             data={
                 "warehouse_id": updated_inv.warehouse_id,
-                "quantity_available": updated_inv.quantity_available,
+                "available_quantity": updated_inv.available_quantity,
             },
         )
 

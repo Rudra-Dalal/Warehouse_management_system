@@ -255,94 +255,136 @@ class FulfillmentController:
         if not client:
             raise RuntimeError("Database connection not initialized")
 
-        max_retries = 5
-        for attempt in range(max_retries):
-            async with client.start_session() as session:
-                try:
-                    await session.start_transaction()
-
-                    # Consume reservation & log PICK movement for each item
-                    for item in updated_items:
-                        inv = await self.inventory_crud.get_by_product_and_warehouse(
-                            product_id=item.product_id,
-                            warehouse_id=fulfillment.warehouse_id,
-                            session=session,
-                        )
-                        if not inv:
-                            await session.abort_transaction()
-                            raise HTTPException(
-                                status_code=status.HTTP_404_NOT_FOUND,
-                                detail=f"Inventory record not found for product ID '{item.product_id}'",
-                            )
-
-                        consumed_inv = await self.inventory_crud.consume_reservation_atomic(
-                            inventory_id=inv.id,
-                            picked_quantity=item.picked_quantity,
-                            session=session,
-                        )
-                        if not consumed_inv:
-                            await session.abort_transaction()
-                            raise HTTPException(
-                                status_code=status.HTTP_409_CONFLICT,
-                                detail=f"Insufficient reserved inventory for product ID '{item.product_id}'",
-                            )
-
-                        # Log PICK inventory movement
-                        movement = InventoryMovementModel(
-                            product_id=item.product_id,
-                            warehouse_id=fulfillment.warehouse_id,
-                            movement_type="PICK",
-                            quantity=-item.picked_quantity,
-                            reference_type="FULFILLMENT",
-                            reference_id=fulfillment.id,
-                            user_id=current_user.id,
-                        )
-                        await self.movement_crud.create_movement(movement, session=session)
-
-                    picked_at = datetime.datetime.now(datetime.timezone.utc)
-                    updated_fulfillment = await self.fulfillment_crud.update_pick_progress(
-                        fulfillment_id=fulfillment.id,
-                        items=updated_items,
-                        picked_by_user_id=current_user.id,
-                        picked_at=picked_at,
-                        session=session,
-                    )
-
-                    await session.commit_transaction()
-                    logger.info(f"Successfully picked fulfillment '{fulfillment.id}' (transactional)")
-                    return await self._build_fulfillment_response(updated_fulfillment)
-
-                except OperationFailure as op_err:
+        if DatabaseManager.is_transaction_supported():
+            max_retries = 5
+            for attempt in range(max_retries):
+                async with client.start_session() as session:
                     try:
-                        await session.abort_transaction()
-                    except Exception:
-                        pass
-                    if op_err.code == 20 or "Transaction numbers" in str(op_err):
+                        await session.start_transaction()
+
+                        # Consume reservation & log PICK movement for each item
+                        for item in updated_items:
+                            inv = await self.inventory_crud.get_by_product_and_warehouse(
+                                product_id=item.product_id,
+                                warehouse_id=fulfillment.warehouse_id,
+                                session=session,
+                            )
+                            if not inv:
+                                await session.abort_transaction()
+                                raise HTTPException(
+                                    status_code=status.HTTP_404_NOT_FOUND,
+                                    detail=f"Inventory record not found for product ID '{item.product_id}'",
+                                )
+
+                            consumed_inv = await self.inventory_crud.consume_reservation_atomic(
+                                inventory_id=inv.id,
+                                picked_quantity=item.picked_quantity,
+                                session=session,
+                            )
+                            if not consumed_inv:
+                                await session.abort_transaction()
+                                raise HTTPException(
+                                    status_code=status.HTTP_409_CONFLICT,
+                                    detail=f"Insufficient reserved inventory for product ID '{item.product_id}'",
+                                )
+
+                            # Log PICK inventory movement
+                            movement = InventoryMovementModel(
+                                product_id=item.product_id,
+                                warehouse_id=fulfillment.warehouse_id,
+                                movement_type="PICK",
+                                quantity=-item.picked_quantity,
+                                reference_type="FULFILLMENT",
+                                reference_id=fulfillment.id,
+                                user_id=current_user.id,
+                            )
+                            await self.movement_crud.create_movement(movement, session=session)
+
+                        picked_at = datetime.datetime.now(datetime.timezone.utc)
+                        updated_fulfillment = await self.fulfillment_crud.update_pick_progress(
+                            fulfillment_id=fulfillment.id,
+                            items=updated_items,
+                            picked_by_user_id=current_user.id,
+                            picked_at=picked_at,
+                            session=session,
+                        )
+
+                        await session.commit_transaction()
+                        logger.info(f"Successfully picked fulfillment '{fulfillment.id}' (transactional)")
+                        return await self._build_fulfillment_response(updated_fulfillment)
+
+                    except OperationFailure as op_err:
+                        try:
+                            await session.abort_transaction()
+                        except Exception:
+                            pass
+                        is_transient = op_err.has_error_label("TransientTransactionError") or op_err.code == 112
+                        if is_transient and attempt < max_retries - 1:
+                            logger.warning(f"Transient transaction WriteConflict on pick attempt {attempt+1}. Retrying...")
+                            await asyncio.sleep(0.02 * (2 ** attempt))
+                            continue
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail=f"Concurrent pick conflict for fulfillment '{fulfillment_id}'",
+                        )
+                    except Exception as err:
+                        try:
+                            await session.abort_transaction()
+                        except Exception:
+                            pass
+                        if isinstance(err, HTTPException):
+                            raise err
+                        logger.error(f"Transaction error in pick_fulfillment: {err}")
                         raise HTTPException(
                             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail="Multi-document transaction support is unavailable on this MongoDB deployment.",
+                            detail=f"Pick transaction failed: {str(err)}",
                         )
-                    is_transient = op_err.has_error_label("TransientTransactionError") or op_err.code == 112
-                    if is_transient and attempt < max_retries - 1:
-                        logger.warning(f"Transient transaction WriteConflict on pick attempt {attempt+1}. Retrying...")
-                        await asyncio.sleep(0.02 * (2 ** attempt))
-                        continue
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail=f"Concurrent pick conflict for fulfillment '{fulfillment_id}'",
-                    )
-                except Exception as err:
-                    try:
-                        await session.abort_transaction()
-                    except Exception:
-                        pass
-                    if isinstance(err, HTTPException):
-                        raise err
-                    logger.error(f"Transaction error in pick_fulfillment: {err}")
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=f"Pick transaction failed: {str(err)}",
-                    )
+
+        # Standalone MongoDB deployment fallback
+        for item in updated_items:
+            inv = await self.inventory_crud.get_by_product_and_warehouse(
+                product_id=item.product_id,
+                warehouse_id=fulfillment.warehouse_id,
+                session=None,
+            )
+            if not inv:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Inventory record not found for product ID '{item.product_id}'",
+                )
+
+            consumed_inv = await self.inventory_crud.consume_reservation_atomic(
+                inventory_id=inv.id,
+                picked_quantity=item.picked_quantity,
+                session=None,
+            )
+            if not consumed_inv:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Insufficient reserved inventory for product ID '{item.product_id}'",
+                )
+
+            movement = InventoryMovementModel(
+                product_id=item.product_id,
+                warehouse_id=fulfillment.warehouse_id,
+                movement_type="PICK",
+                quantity=-item.picked_quantity,
+                reference_type="FULFILLMENT",
+                reference_id=fulfillment.id,
+                user_id=current_user.id,
+            )
+            await self.movement_crud.create_movement(movement, session=None)
+
+        picked_at = datetime.datetime.now(datetime.timezone.utc)
+        updated_fulfillment = await self.fulfillment_crud.update_pick_progress(
+            fulfillment_id=fulfillment.id,
+            items=updated_items,
+            picked_by_user_id=current_user.id,
+            picked_at=picked_at,
+            session=None,
+        )
+        logger.info(f"Successfully picked fulfillment '{fulfillment.id}' (non-transactional fallback)")
+        return await self._build_fulfillment_response(updated_fulfillment)
 
     async def pack_fulfillment(
         self,
@@ -445,59 +487,71 @@ class FulfillmentController:
         if not client:
             raise RuntimeError("Database connection not initialized")
 
-        max_retries = 5
-        for attempt in range(max_retries):
-            async with client.start_session() as session:
-                try:
-                    await session.start_transaction()
-
-                    shipped_at = datetime.datetime.now(datetime.timezone.utc)
-                    updated_fulfillment = await self.fulfillment_crud.update_shipping_state(
-                        fulfillment_id=fulfillment.id,
-                        shipped_by_user_id=current_user.id,
-                        shipped_at=shipped_at,
-                        session=session,
-                    )
-
-                    # Update associated Order status to SHIPPED
-                    await self.order_crud.update_order_status(
-                        order_id=fulfillment.order_id,
-                        status="SHIPPED",
-                        session=session,
-                    )
-
-                    await session.commit_transaction()
-                    logger.info(f"Successfully shipped fulfillment '{fulfillment.id}' and order '{fulfillment.order_id}' (transactional)")
-                    return await self._build_fulfillment_response(updated_fulfillment)
-
-                except OperationFailure as op_err:
+        if DatabaseManager.is_transaction_supported():
+            max_retries = 5
+            for attempt in range(max_retries):
+                async with client.start_session() as session:
                     try:
-                        await session.abort_transaction()
-                    except Exception:
-                        pass
-                    if op_err.code == 20 or "Transaction numbers" in str(op_err):
+                        await session.start_transaction()
+
+                        shipped_at = datetime.datetime.now(datetime.timezone.utc)
+                        updated_fulfillment = await self.fulfillment_crud.update_shipping_state(
+                            fulfillment_id=fulfillment.id,
+                            shipped_by_user_id=current_user.id,
+                            shipped_at=shipped_at,
+                            session=session,
+                        )
+
+                        # Update associated Order status to SHIPPED
+                        await self.order_crud.update_order_status(
+                            order_id=fulfillment.order_id,
+                            status="SHIPPED",
+                            session=session,
+                        )
+
+                        await session.commit_transaction()
+                        logger.info(f"Successfully shipped fulfillment '{fulfillment.id}' and order '{fulfillment.order_id}' (transactional)")
+                        return await self._build_fulfillment_response(updated_fulfillment)
+
+                    except OperationFailure as op_err:
+                        try:
+                            await session.abort_transaction()
+                        except Exception:
+                            pass
+                        is_transient = op_err.has_error_label("TransientTransactionError") or op_err.code == 112
+                        if is_transient and attempt < max_retries - 1:
+                            logger.warning(f"Transient transaction WriteConflict on ship attempt {attempt+1}. Retrying...")
+                            await asyncio.sleep(0.02 * (2 ** attempt))
+                            continue
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail=f"Concurrent shipping conflict for fulfillment '{fulfillment_id}'",
+                        )
+                    except Exception as err:
+                        try:
+                            await session.abort_transaction()
+                        except Exception:
+                            pass
+                        if isinstance(err, HTTPException):
+                            raise err
+                        logger.error(f"Transaction error in ship_fulfillment: {err}")
                         raise HTTPException(
                             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail="Multi-document transaction support is unavailable on this MongoDB deployment.",
+                            detail=f"Ship transaction failed: {str(err)}",
                         )
-                    is_transient = op_err.has_error_label("TransientTransactionError") or op_err.code == 112
-                    if is_transient and attempt < max_retries - 1:
-                        logger.warning(f"Transient transaction WriteConflict on ship attempt {attempt+1}. Retrying...")
-                        await asyncio.sleep(0.02 * (2 ** attempt))
-                        continue
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail=f"Concurrent shipping conflict for fulfillment '{fulfillment_id}'",
-                    )
-                except Exception as err:
-                    try:
-                        await session.abort_transaction()
-                    except Exception:
-                        pass
-                    if isinstance(err, HTTPException):
-                        raise err
-                    logger.error(f"Transaction error in ship_fulfillment: {err}")
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=f"Ship transaction failed: {str(err)}",
-                    )
+
+        # Standalone MongoDB deployment fallback
+        shipped_at = datetime.datetime.now(datetime.timezone.utc)
+        updated_fulfillment = await self.fulfillment_crud.update_shipping_state(
+            fulfillment_id=fulfillment.id,
+            shipped_by_user_id=current_user.id,
+            shipped_at=shipped_at,
+            session=None,
+        )
+        await self.order_crud.update_order_status(
+            order_id=fulfillment.order_id,
+            status="SHIPPED",
+            session=None,
+        )
+        logger.info(f"Successfully shipped fulfillment '{fulfillment.id}' and order '{fulfillment.order_id}' (non-transactional fallback)")
+        return await self._build_fulfillment_response(updated_fulfillment)

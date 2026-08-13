@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/auth/auth-context";
 import { Button } from "@/components/whitfield/primitives";
+import { RequestAccessModal } from "@/components/whitfield/request-access-modal";
 import { Lock, Warehouse, AlertCircle } from "lucide-react";
 
 export const Route = createFileRoute("/login")({
@@ -22,6 +23,7 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
 
   if (isAuthenticated) {
     navigate({ to: "/" });
@@ -119,6 +121,27 @@ function LoginPage() {
             </Button>
           </form>
         </div>
+
+        {/* Controlled Secondary Onboarding / Access Request Area */}
+        <div className="rounded-xl border border-border bg-surface/50 p-4 text-center space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Need access?</p>
+          <p className="text-xs text-muted-foreground/80">
+            Contact your warehouse administrator to request an account.
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setIsRequestModalOpen(true)}
+            className="mt-1 w-full justify-center text-xs"
+          >
+            Request Access
+          </Button>
+        </div>
+
+        <RequestAccessModal
+          isOpen={isRequestModalOpen}
+          onClose={() => setIsRequestModalOpen(false)}
+        />
       </div>
     </div>
   );

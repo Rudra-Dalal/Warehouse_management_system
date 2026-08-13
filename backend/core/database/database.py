@@ -54,6 +54,19 @@ class DatabaseManager:
             raise RuntimeError("Database connection has not been initialized.")
         return cls.db
 
+    @classmethod
+    def is_transaction_supported(cls) -> bool:
+        """Checks whether the active MongoDB deployment topology supports multi-document transactions.
+
+        Returns:
+            bool: True if connected to a Replica Set or Sharded cluster, False if standalone.
+        """
+        if not cls.client:
+            return False
+        topology = cls.client.topology_description.topology_type_name
+        return topology in ("ReplicaSetWithPrimary", "ReplicaSetNoPrimary", "Sharded", "LoadBalanced")
+
+
 
 async def seed_fixed_warehouses() -> None:
     """Idempotently seeds the fixed Reno and Columbus warehouse entities.
