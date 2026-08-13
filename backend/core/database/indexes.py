@@ -56,7 +56,8 @@ async def create_database_indexes() -> None:
     await db["inventory_movements"].create_index("movement_type")
     await db["inventory_movements"].create_index("created_at")
 
-    # Receiving Shipments collection: Unique idempotency_key for duplicate protection
+    # Receiving Shipments collection: Unique receiving_reference for duplicate protection & idempotency
+    await db["receiving_shipments"].create_index("receiving_reference", unique=True)
     await db["receiving_shipments"].create_index(
         "idempotency_key", unique=True, sparse=True
     )

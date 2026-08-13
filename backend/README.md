@@ -24,17 +24,17 @@ Models / Database (MongoDB collections & indexes)
 
 ---
 
-## 2. Domain Relationship (Phase 3 & Phase 4)
+## 2. Domain Relationship (Phase 3, Phase 4 & Phase 5)
 
 ```text
     SELLER
        │
        │ seller_id
        ▼
-    PRODUCT
-       │
-       │ product_id
-       ▼
+    PRODUCT ◄─────── RECEIVING SHIPMENT (Inbound)
+       │                    │
+       │ product_id         │ receiving_reference (UNIQUE)
+       ▼                    ▼
     INVENTORY ───> INVENTORY MOVEMENT (History)
        │
        │ warehouse_id
@@ -51,14 +51,18 @@ Models / Database (MongoDB collections & indexes)
    - **Filter**: `{"_id": ObjectId(inventory_id), "available_quantity": {"$gte": requested_quantity}}`
    - **Update**: `{"$inc": {"available_quantity": -requested_quantity, "reserved_quantity": requested_quantity}, "$set": {"updated_at": ...}}`
    - **Concurrency Safety**: Solves race conditions without Python-level locks (`asyncio.Lock`, `threading.Lock`) or read-check-write loops. Guaranteed oversell protection: if 10 concurrent requests each attempt to reserve 9 units when only 9 units are available, **exactly 1 succeeds (200 OK)** and **exactly 9 fail (409 Conflict)**.
-6. **Non-Negative Stock Invariant**: `available_quantity >= 0` is strictly enforced. Adjustments or reservations exceeding available stock return `HTTP 400 Bad Request` or `HTTP 409 Conflict` respectively.
+6. **Inbound Receiving & Strict Idempotency (Phase 5)**: Inbound inventory receiving (`POST /v1/receiving`) processes shipment receipts with strict idempotency.
+   - **Database Unique Constraint**: MongoDB enforces a strict `UNIQUE(receiving_reference)` index.
+   - **Zero Double-Counting**: Submitting an identical `receiving_reference` multiple times (network retries, double clicks) returns the existing `ReceivingResponse` (`HTTP 200 OK`) without double-incrementing stock or creating additional movement logs.
+   - **High-Concurrency Guarantee**: If 10 concurrent requests simultaneously submit `"WH-REC-CONC-001"` (+100 units), **exactly 1 receiving shipment is created**, stock is incremented **exactly once (+100)**, and exactly 1 `RECEIVING` movement log is created.
+7. **Non-Negative Stock Invariant**: `available_quantity >= 0` is strictly enforced. Adjustments or reservations exceeding available stock return `HTTP 400 Bad Request` or `HTTP 409 Conflict` respectively.
 
 > [!NOTE]
-> Receiving workflows are strictly deferred to **Phase 5**. Orders handling is deferred to **Phase 6**.
+> Orders handling is strictly deferred to **Phase 6**. Order fulfillment is deferred to **Phase 7**.
 
 ---
 
-## 3. Security, Roles & Permissions (Phase 2, Phase 3 & Phase 4)
+## 3. Security, Roles & Permissions (Phase 2, Phase 3, Phase 4 & Phase 5)
 
 ### Roles
 - **`ADMIN`**: Full administrative access (`all permissions`).
@@ -74,7 +78,7 @@ Models / Database (MongoDB collections & indexes)
 - `inventory.read`: View warehouse stock levels and movement history
 - `inventory.adjust`: Create initial inventory and adjust stock levels
 - `inventory.reserve`: Atomically reserve available inventory stock for orders
-- `inventory.receive`: Receive stock shipments (Phase 5)
+- `inventory.receive`: Receive inbound stock shipments (Phase 5)
 - `orders.read` / `orders.confirm`: Orders handling (Phase 6)
 - `fulfillment.pick` / `fulfillment.pack` / `fulfillment.ship`: Order fulfillment (Phase 7)
 - `audit.read`: View system audit logs
@@ -117,6 +121,11 @@ Models / Database (MongoDB collections & indexes)
 - `PATCH /v1/inventory/{inventory_id}/adjust`: Cycle count adjustment (+/- signed delta, logs movement & user).
 - `POST /v1/inventory/{inventory_id}/reserve`: Atomically reserve stock (`quantity > 0`). Returns 200 OK on success, 409 Conflict if stock is insufficient, 404 if inventory ID does not exist. Logs `RESERVATION` movement with signed `quantity = -requested_quantity`.
 - `GET /v1/inventory/{inventory_id}/movements`: Get historical movement logs for an inventory item.
+
+### Inbound Receiving & Idempotency (`inventory.receive`, `inventory.read`)
+- `POST /v1/receiving`: Receive inbound inventory shipment (single/multi-product). Enforces `UNIQUE(receiving_reference)`. Duplicate requests return existing result (`200 OK`) without double-counting stock.
+- `GET /v1/receiving`: List receiving shipments (optional `warehouse_code` or `seller_id` filters).
+- `GET /v1/receiving/{receiving_id}`: Get detailed receiving shipment information.
 
 ---
 
@@ -162,9 +171,9 @@ OpenAPI docs will be available at `http://localhost:8000/docs`.
 
 ## 7. Testing Strategy & Instructions
 
-The test suite executes against an isolated test database (`whitfield_wms_test`) and validates infrastructure, security, auth API, RBAC, sellers, products, UPC string preservation, warehouse stock isolation, inventory adjustments, atomic reservation APIs, and deterministic concurrency safety.
+The test suite executes against an isolated test database (`whitfield_wms_test`) and validates infrastructure, security, auth API, RBAC, sellers, products, UPC string preservation, warehouse stock isolation, inventory adjustments, atomic reservation APIs, inbound receiving idempotency, and deterministic concurrency safety.
 
-### Running Complete Test Suite (39 / 39 Tests)
+### Running Complete Test Suite (46 / 46 Tests)
 ```bash
 python -m pytest tests/ -v
 ```
@@ -195,6 +204,12 @@ python -m pytest tests/api/test_inventory_api.py -v
 # Reservation API Integration Tests
 python -m pytest tests/api/test_reservation_api.py -v
 
-# Concurrency Safety Tests (asyncio.gather 10x simultaneous reservation requests)
+# Reservation Concurrency Safety Tests (10x simultaneous reservation requests)
 python -m pytest tests/concurrency/test_concurrent_reservation.py -v
+
+# Receiving API Integration & Idempotency Tests
+python -m pytest tests/api/test_receiving_api.py -v
+
+# Receiving Concurrency & Duplicate Protection Tests (10x simultaneous duplicate shipments)
+python -m pytest tests/concurrency/test_concurrent_receiving.py -v
 ```

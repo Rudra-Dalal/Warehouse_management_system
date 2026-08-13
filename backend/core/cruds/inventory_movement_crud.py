@@ -21,13 +21,16 @@ class InventoryMovementCRUD:
         return DatabaseManager.get_db()["inventory_movements"]
 
     async def create_movement(
-        self, movement: InventoryMovementModel
+        self,
+        movement: InventoryMovementModel,
+        session=None,
     ) -> InventoryMovementModel:
         """Inserts a new inventory movement event log into the database.
         Returns the created movement model with assigned MongoDB ObjectId.
 
         Args:
             movement (InventoryMovementModel): Movement event log domain data.
+            session (Optional[AsyncClientSession]): Active MongoDB transaction session.
 
         Returns:
             InventoryMovementModel: The created movement log instance.
@@ -37,7 +40,7 @@ class InventoryMovementCRUD:
             f"qty {movement.quantity} for product {movement.product_id}"
         )
         doc = movement.model_dump(by_alias=True, exclude={"id"})
-        result = await self.collection.insert_one(doc)
+        result = await self.collection.insert_one(doc, session=session)
         movement.id = str(result.inserted_id)
         return movement
 

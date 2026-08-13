@@ -186,3 +186,71 @@ class InventoryCRUD:
             return None
         result["_id"] = str(result["_id"])
         return InventoryModel(**result)
+
+    async def increment_inventory_atomic(
+        self,
+        product_id: str,
+        warehouse_id: str,
+        quantity: int,
+        session=None,
+    ) -> InventoryModel:
+        """Atomically increments available_quantity for a product at a warehouse.
+        If no inventory record exists, creates an initial record.
+
+        Args:
+            product_id (str): Product ObjectId string.
+            warehouse_id (str): Warehouse ObjectId string.
+            quantity (int): Received stock quantity to increment (> 0).
+            session (Optional[AsyncClientSession]): Active MongoDB transaction session.
+
+        Returns:
+            InventoryModel: Updated or created inventory model instance.
+        """
+        logger.info(
+            f"Executing InventoryCRUD.increment_inventory_atomic for product {product_id} "
+            f"at warehouse {warehouse_id} quantity={quantity}"
+        )
+        now = datetime.now(timezone.utc)
+        result = await self.collection.find_one_and_update(
+            {"product_id": product_id, "warehouse_id": warehouse_id},
+            {
+                "$inc": {"available_quantity": quantity},
+                "$set": {"updated_at": now},
+            },
+            return_document=ReturnDocument.AFTER,
+            session=session,
+        )
+        if result:
+            result["_id"] = str(result["_id"])
+            return InventoryModel(**result)
+
+        # Record does not exist -> Create initial inventory
+        initial_inv = InventoryModel(
+            product_id=product_id,
+            warehouse_id=warehouse_id,
+            available_quantity=quantity,
+            reserved_quantity=0,
+            damaged_quantity=0,
+            created_at=now,
+            updated_at=now,
+        )
+        doc = initial_inv.model_dump(by_alias=True, exclude={"id"})
+        try:
+            insert_res = await self.collection.insert_one(doc, session=session)
+            initial_inv.id = str(insert_res.inserted_id)
+            return initial_inv
+        except Exception:
+            # Concurrent insert collision -> retry atomic increment
+            retry_res = await self.collection.find_one_and_update(
+                {"product_id": product_id, "warehouse_id": warehouse_id},
+                {
+                    "$inc": {"available_quantity": quantity},
+                    "$set": {"updated_at": now},
+                },
+                return_document=ReturnDocument.AFTER,
+                session=session,
+            )
+            if retry_res:
+                retry_res["_id"] = str(retry_res["_id"])
+                return InventoryModel(**retry_res)
+            raise
