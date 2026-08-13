@@ -10,6 +10,7 @@ from core.models.audit_log_model import AuditAction
 from core.models.product_model import ProductModel
 from core.models.user_model import UserModel
 from core.services.audit_service import AuditService
+from core.services.barcode_service import BarcodeService
 
 logger = get_logger(__name__)
 
@@ -122,13 +123,8 @@ class ProductController:
             ProductResponse: Matching product details.
         """
         logger.info(f"Executing ProductController.get_product_by_upc for {upc}")
-        product = await self.product_crud.get_by_upc(upc)
-        if not product:
-            logger.warning(f"Product UPC {upc} not found")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Product with UPC '{upc}' not found",
-            )
+        barcode_service = BarcodeService()
+        product = await barcode_service.resolve_barcode(upc)
         return ProductResponse(
             id=product.id,
             sku=product.sku,

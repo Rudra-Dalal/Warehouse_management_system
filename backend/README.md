@@ -236,3 +236,200 @@ python -m pytest tests/api/test_order_api.py -v
 # Customer Order Concurrency Safety Tests (10x simultaneous order requests)
 python -m pytest tests/concurrency/test_concurrent_orders.py -v
 ```
+
+---
+
+## 8. Command Line Interface (Phase 9 CLI)
+
+The project includes a thin, scriptable Command Line Interface (CLI) that enables warehouse operators to manage inventory, products, orders, fulfillment tasks, and audit logs.
+
+### Key Architecture Rules
+- **HTTP Communication Only**: The CLI communicates strictly with the FastAPI backend over HTTP using Python's standard `urllib` library.
+- **No Direct Database Access**: The CLI **never** connects to MongoDB directly, imports database CRUD classes, or runs backend controllers.
+- **RBAC Enforcement**: All authorization and validation rules are executed and enforced on the FastAPI backend.
+
+### Setup & Base URL Configuration
+
+The CLI defaults to communicating with `http://127.0.0.1:8000`. You can configure this base URL using the `WMS_API_BASE_URL` environment variable:
+
+```bash
+# On Linux/macOS
+export WMS_API_BASE_URL="http://127.0.0.1:8000"
+
+# On Windows (PowerShell)
+$env:WMS_API_BASE_URL="http://127.0.0.1:8000"
+```
+
+### Session State & Authentication
+
+The CLI supports persistent login sessions across commands:
+1. **Local Persistent Cache**: Log in to cache the JWT token locally at `~/.wms_session.json` (outside the repository folder).
+2. **Environment Variable Override**: You can also supply the token dynamically via the `WMS_TOKEN` environment variable.
+3. **Session Removal**: Logging out deletes `~/.wms_session.json` safely.
+
+### Commands Reference
+
+Run the help command to see all commands and subcommands:
+```bash
+python -m cli --help
+```
+
+#### Authentication
+```bash
+# Log in and cache JWT token
+python -m cli login
+
+# View current user identity
+python -m cli whoami
+
+# Clear token and log out
+python -m cli logout
+```
+
+#### Service Health
+```bash
+python -m cli health
+```
+
+#### Inventory Management
+```bash
+# List stock levels (filters: --warehouse-code, --sku, --product-id)
+python -m cli inventory list --warehouse-code RENO
+
+# Get details of a specific inventory item
+python -m cli inventory get <inventory_id>
+
+# Adjust available stock with signed delta (and optional note)
+python -m cli inventory adjust <inventory_id> --quantity -5 --note "Cycle count"
+
+# Reserve available stock
+python -m cli inventory reserve <inventory_id> --quantity 10
+
+# List stock movements
+python -m cli inventory movements <inventory_id>
+```
+
+#### Product Catalog
+```bash
+# List catalog products (filter: --seller-id)
+python -m cli products list
+
+# Get details of a specific product
+python -m cli products get <product_id>
+
+# Lookup product by SKU
+python -m cli products sku <sku>
+
+# Lookup product by UPC (preserves leading zeros as string)
+python -m cli products upc 012345678905
+
+# MVP Scan lookup (string barcode emulation)
+python -m cli products scan 012345678905
+```
+
+#### Inbound Receiving
+```bash
+# List inbound shipments
+python -m cli receiving list
+
+# Get shipment details
+python -m cli receiving get <receiving_id>
+
+# Create inbound receiving shipment (items formatted as product_id:quantity)
+python -m cli receiving create --reference REC-100 --warehouse-code COLUMBUS --seller-id <seller_id> --items prod1:50,prod2:100
+```
+
+#### Customer Orders
+```bash
+# List customer orders
+python -m cli orders list
+
+# Get order details
+python -m cli orders get <order_id>
+
+# Create and confirm order (items formatted as product_id:quantity)
+python -m cli orders create --order-number ORD-200 --warehouse-code RENO --seller-id <seller_id> --items prod1:5,prod2:10
+```
+
+#### Fulfillment Tasks
+```bash
+# List fulfillment tasks
+python -m cli fulfillment list
+
+# Get fulfillment details
+python -m cli fulfillment get <fulfillment_id>
+
+# Create fulfillment task
+python -m cli fulfillment create --order-id <order_id>
+
+# Pick items for fulfillment task
+python -m cli fulfillment pick <fulfillment_id> --items prod1:5,prod2:10
+
+# Pack fulfillment task
+python -m cli fulfillment pack <fulfillment_id> --note "Packed in Medium Box"
+
+# Ship fulfillment task
+python -m cli fulfillment ship <fulfillment_id> --tracking TRK987654321
+```
+
+#### Audit Logs
+```bash
+# List audit logs with pagination and filters
+python -m cli audit list --action CREATE --entity-type PRODUCT --limit 10
+
+# Get detailed audit log
+python -m cli audit get <audit_id>
+
+# Get audit history for specific entity
+python -m cli audit entity PRODUCT <product_id>
+
+# Get audit history for specific user
+python -m cli audit user <user_id>
+```
+
+### Running CLI Unit Tests
+
+Run the CLI integration and mock tests via pytest:
+```bash
+python -m pytest tests/cli/ -v
+```
+
+---
+
+## 9. Phase 10 – Barcode / UPC Scanning MVP
+
+This phase implements a reusable, keyboard-emulated Barcode and UPC Scanning MVP workflow built on top of the WMS CLI and FastAPI backend.
+
+### Architecture Flow
+```
+Barcode Input (Single Scan / Interactive loop)
+         ↓
+Normalization (Whitespace trimmed, leading zeros preserved, empty rejected)
+         ↓
+HTTP Product Resolution (GET /v1/products/by-upc/{upc})
+         ↓
+HTTP Inventory Lookup (GET /v1/inventory?product_id={product_id})
+         ↓
+Display Product details + stock levels at RENO and COLUMBUS
+```
+
+### Key Highlights & Features
+- **Strict String Preserves**: Barcodes are treated strictly as strings to prevent truncation of leading zeros.
+- **Normalization Utility**: The `normalize_barcode(barcode: str) -> str` utility trims leading/trailing whitespace, validates non-emptiness, and guarantees uniform input representation across the system.
+- **Unified APIs**: The existing `GET /v1/products/by-upc/{upc}` endpoint is reused and backed by `BarcodeService` to resolve normalized UPC queries, keeping API layers DRY.
+- **Inventory Integration**: After product resolution, the CLI automatically makes a second API request to fetch and display the product's real-time inventory counts at `RENO` and `COLUMBUS`.
+- **Single Scan Command**: Operators can run a single lookup:
+  ```bash
+  python -m cli products scan 012345678905
+  ```
+- **Interactive Scan Mode**: Running the command without arguments launches an interactive loop:
+  ```bash
+  python -m cli products scan
+  ```
+  This is fully compatible with standard USB/Bluetooth barcode scanners operating in keyboard-emulation mode. Operators can scan multiple barcodes sequentially and exit cleanly by typing `q` or pressing `Ctrl+C` (without raw Python tracebacks).
+- **Error & Status Handling**:
+  - **404 Not Found**: Clearly states when a barcode isn't registered, instructing the operator to verify product master data.
+  - **Inactive Products**: Clearly displays when a resolved product has a status of `INACTIVE`.
+- **RBAC Enforcement**: The workflow executes over backend endpoints secured by `products.read` and `inventory.read` permissions, ensuring RBAC and security remains intact.
+- **Disclaimer**: Phase 10 does not implement physical barcode hardware, camera scanning, OCR, or image recognition.
+

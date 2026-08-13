@@ -140,3 +140,68 @@ async def test_product_creation_invalid_seller():
             headers={"Authorization": f"Bearer {token}"},
         )
         assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_product_upc_barcode_normalization_and_inactive():
+    """Verifies that whitespace is normalized, inactive products are retrieved, and unauthenticated requests are rejected."""
+    role_crud = RoleCRUD()
+    admin_role = await role_crud.get_by_name("ADMIN")
+
+    user_crud = UserCRUD()
+    admin_user = UserModel(
+        name="Admin Test",
+        email="barcodetest@example.com",
+        password_hash=hash_password("Pass123!"),
+        role_id=admin_role.id,
+        is_active=True,
+    )
+    created_admin = await user_crud.create_user(admin_user)
+    token = create_access_token(subject=created_admin.id)
+
+    seller_crud = SellerCRUD()
+    seller = await seller_crud.create_seller(
+        SellerModel(code="BARCODE_SELLER", name="Barcode Seller Inc")
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        # Create an inactive product
+        res_create = await client.post(
+            "/v1/products",
+            json={
+                "sku": "INACTIVE-SKU",
+                "name": "Inactive Item",
+                "seller_id": seller.id,
+                "upc": "000999888111",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert res_create.status_code == 201
+        prod_id = res_create.json()["id"]
+
+        # Deactivate it
+        res_patch = await client.patch(
+            f"/v1/products/{prod_id}",
+            json={"is_active": False},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert res_patch.status_code == 200
+        assert res_patch.json()["is_active"] is False
+
+        # Query by UPC with surrounding whitespace
+        res_whitespace = await client.get(
+            "/v1/products/by-upc/%20000999888111%20",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert res_whitespace.status_code == 200
+        assert res_whitespace.json()["id"] == prod_id
+        assert res_whitespace.json()["is_active"] is False
+
+        # Query without authentication -> 401
+        res_unauth = await client.get(
+            "/v1/products/by-upc/000999888111",
+        )
+        assert res_unauth.status_code == 401
+
