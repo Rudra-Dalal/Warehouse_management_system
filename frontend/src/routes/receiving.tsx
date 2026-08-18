@@ -311,11 +311,13 @@ function ReceivingPage() {
               {receivingRecords.map((r) => {
                 const totalQty = r.items.reduce((sum, item) => sum + item.quantity_received, 0);
                 return (
-                  <Tr key={r.receiving_id}>
-                    <Td className="numeric font-medium text-xs">{r.receiving_id}</Td>
+                  <Tr key={r.receiving_reference || r.receiving_id || r.id}>
+                    <Td className="numeric font-medium text-xs">
+                      {r.receiving_reference || r.receiving_id || r.id}
+                    </Td>
                     <Td>{sellerMap.get(r.seller_id) || r.seller_id}</Td>
                     <Td className="numeric text-[11px] tracking-wider text-muted-foreground">
-                      {r.warehouse_id}
+                      {r.warehouse_code || r.warehouse_id}
                     </Td>
                     <Td align="right" className="numeric font-semibold">
                       {totalQty.toLocaleString()} units

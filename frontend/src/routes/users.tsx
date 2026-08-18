@@ -32,13 +32,15 @@ export const Route = createFileRoute("/users")({
 
 const ROLES: Role[] = ["ADMIN", "WAREHOUSE_MANAGER", "INVENTORY_CLERK", "READ_ONLY"];
 
-const roleTone = (role: Role) => {
+const roleTone = (role?: Role | string) => {
   switch (role) {
     case "ADMIN":
       return "signal";
     case "WAREHOUSE_MANAGER":
+    case "MANAGER":
       return "info";
     case "INVENTORY_CLERK":
+    case "WAREHOUSE_STAFF":
       return "ok";
     case "READ_ONLY":
     default:
@@ -71,7 +73,9 @@ function UsersPage() {
   const createMutation = useMutation({
     mutationFn: createUserApi,
     onSuccess: (newUser) => {
-      toast.success(`User ${newUser.username} created successfully!`);
+      toast.success(
+        `User ${newUser.username || newUser.name || newUser.email} created successfully!`,
+      );
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setIsModalOpen(false);
       setUsername("");
@@ -143,28 +147,35 @@ function UsersPage() {
             />
             <tbody>
               {usersList.map((u) => {
-                const initials = (u.full_name || u.username)
-                  .split(" ")
-                  .map((p) => p[0])
-                  .join("")
-                  .toUpperCase()
-                  .slice(0, 2);
+                const displayName =
+                  u.name || u.full_name || u.username || u.email.split("@")[0] || "User";
+                const initials =
+                  displayName
+                    .split(" ")
+                    .filter(Boolean)
+                    .map((p) => p[0])
+                    .join("")
+                    .toUpperCase()
+                    .slice(0, 2) || "U";
+                const roleStr = (u.role || "READ_ONLY") as Role;
 
                 return (
-                  <Tr key={u.user_id || u.email}>
+                  <Tr key={u.user_id || u.id || u.email}>
                     <Td>
                       <span className="flex items-center gap-2.5">
                         <span className="grid size-7 place-items-center rounded-full bg-surface-2 text-[11px] font-semibold">
                           {initials}
                         </span>
-                        <span className="font-medium">{u.full_name || u.username}</span>
+                        <span className="font-medium">{displayName}</span>
                       </span>
                     </Td>
                     <Td className="text-muted-foreground">{u.email}</Td>
                     <Td>
-                      <StatusPill tone={roleTone(u.role)}>{u.role}</StatusPill>
+                      <StatusPill tone={roleTone(roleStr)}>{roleStr}</StatusPill>
                     </Td>
-                    <Td className="numeric text-xs text-muted-foreground">{u.user_id}</Td>
+                    <Td className="numeric text-xs text-muted-foreground">
+                      {u.user_id || u.id || "-"}
+                    </Td>
                     <Td>
                       <StatusPill tone={u.is_active ? "ok" : "danger"}>
                         {u.is_active ? "Active" : "Disabled"}

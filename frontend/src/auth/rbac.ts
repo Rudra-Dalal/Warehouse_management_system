@@ -61,9 +61,9 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 };
 
 export function hasRole(user: User | null, roles: Role | Role[]): boolean {
-  if (!user || !user.is_active) return false;
+  if (!user || !user.is_active || !user.role) return false;
   const roleList = Array.isArray(roles) ? roles : [roles];
-  return roleList.includes(user.role);
+  return roleList.includes(user.role as Role);
 }
 
 export function hasPermission(user: User | null, permission: Permission): boolean {
@@ -75,6 +75,7 @@ export function hasPermission(user: User | null, permission: Permission): boolea
   }
 
   // Fallback to role mapping
-  const granted = ROLE_PERMISSIONS[user.role] || [];
+  if (!user.role) return false;
+  const granted = ROLE_PERMISSIONS[user.role as Role] || [];
   return granted.includes(permission);
 }

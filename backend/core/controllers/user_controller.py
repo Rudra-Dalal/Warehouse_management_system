@@ -28,19 +28,23 @@ class UserController:
 
     async def list_users(self) -> List[UserResponse]:
         """Retrieves all user accounts in the system.
-        Returns a list of public UserResponse schemas.
+        Returns a list of public UserResponse schemas with populated role names.
 
         Returns:
             List[UserResponse]: List of all user accounts.
         """
         logger.info("Executing UserController.list_users")
         users = await self.user_crud.list_users()
+        roles = await self.role_crud.list_roles()
+        role_map = {r.id: r.name for r in roles}
+
         return [
             UserResponse(
                 id=u.id,
                 name=u.name,
                 email=u.email,
                 role_id=u.role_id,
+                role=role_map.get(u.role_id, "STAFF"),
                 is_active=u.is_active,
                 created_at=u.created_at,
                 updated_at=u.updated_at,
@@ -66,11 +70,13 @@ class UserController:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"User with ID '{user_id}' not found",
             )
+        role = await self.role_crud.get_by_id(user.role_id)
         return UserResponse(
             id=user.id,
             name=user.name,
             email=user.email,
             role_id=user.role_id,
+            role=role.name if role else "STAFF",
             is_active=user.is_active,
             created_at=user.created_at,
             updated_at=user.updated_at,

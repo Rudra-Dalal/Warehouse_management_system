@@ -112,15 +112,22 @@ class RAGRetriever:
             }
 
         # Build source citations
-        sources = [
-            {
+        sources = []
+        for c in above_threshold:
+            clean_txt = (
+                c["content"]
+                .replace("\u2193", " -> ")
+                .replace("\u2192", " -> ")
+                .replace("\u2022", "*")
+                .replace("\u2013", "-")
+                .replace("\u2014", "-")
+            )
+            sources.append({
                 "source": c["source"],
                 "page": c["page"],
                 "score": round(c["score"], 3),
-                "excerpt": c["content"][:300] + ("..." if len(c["content"]) > 300 else ""),
-            }
-            for c in above_threshold
-        ]
+                "excerpt": clean_txt[:300] + ("..." if len(clean_txt) > 300 else ""),
+            })
 
         context = "\n\n---\n\n".join(
             f"[Source: {c['source']}, Page {c['page']}]\n{c['content']}"

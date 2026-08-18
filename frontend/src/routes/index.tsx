@@ -42,26 +42,31 @@ function Dashboard() {
   const { data: inventory = [], isLoading: loadingInv } = useQuery({
     queryKey: ["inventory"],
     queryFn: () => getInventoryApi(),
+    retry: false,
   });
 
   const { data: orders = [], isLoading: loadingOrders } = useQuery({
     queryKey: ["orders"],
     queryFn: () => getOrdersApi(),
+    retry: false,
   });
 
   const { data: auditLogs = [] } = useQuery({
     queryKey: ["audit"],
     queryFn: () => getAuditLogsApi({ limit: 5 }),
+    retry: false,
   });
 
   const { data: products = [] } = useQuery({
     queryKey: ["products"],
     queryFn: getProductsApi,
+    retry: false,
   });
 
   const { data: sellers = [] } = useQuery({
     queryKey: ["sellers"],
     queryFn: getSellersApi,
+    retry: false,
   });
 
   const sellerMap = useMemo(() => {
@@ -72,7 +77,11 @@ function Dashboard() {
 
   // Calculations
   const totalAvailable = useMemo(
-    () => inventory.reduce((sum, item) => sum + item.quantity_available, 0),
+    () =>
+      inventory.reduce(
+        (sum, item) => sum + (item.available_quantity ?? item.quantity_available ?? 0),
+        0,
+      ),
     [inventory],
   );
 
@@ -82,22 +91,39 @@ function Dashboard() {
   );
 
   const renoData = useMemo(() => {
-    const renoItems = inventory.filter((i) => i.warehouse_id === "RENO");
-    const avail = renoItems.reduce((s, i) => s + i.quantity_available, 0);
-    const res = renoItems.reduce((s, i) => s + i.quantity_reserved, 0);
-    const orderCount = orders.filter(
-      (o) => o.warehouse_id === "RENO" && o.status !== "SHIPPED",
-    ).length;
+    const renoItems = inventory.filter((i) => {
+      const code = (i.warehouse_code || i.warehouse_id || "").toUpperCase();
+      return code === "RENO" || code.includes("RENO");
+    });
+    const avail = renoItems.reduce(
+      (s, i) => s + (i.available_quantity ?? i.quantity_available ?? 0),
+      0,
+    );
+    const res = renoItems.reduce(
+      (s, i) => s + (i.reserved_quantity ?? i.quantity_reserved ?? 0),
+      0,
+    );
+    const orderCount = orders.filter((o) => {
+      const code = ((o as any).warehouse_code || o.warehouse_id || "").toUpperCase();
+      return (code === "RENO" || code.includes("RENO")) && o.status !== "SHIPPED";
+    }).length;
     return { avail, res, orderCount };
   }, [inventory, orders]);
 
   const columbusData = useMemo(() => {
-    const colItems = inventory.filter((i) => i.warehouse_id === "COLUMBUS");
-    const avail = colItems.reduce((s, i) => s + i.quantity_available, 0);
-    const res = colItems.reduce((s, i) => s + i.quantity_reserved, 0);
-    const orderCount = orders.filter(
-      (o) => o.warehouse_id === "COLUMBUS" && o.status !== "SHIPPED",
-    ).length;
+    const colItems = inventory.filter((i) => {
+      const code = (i.warehouse_code || i.warehouse_id || "").toUpperCase();
+      return code === "COLUMBUS" || code.includes("COLUMBUS");
+    });
+    const avail = colItems.reduce(
+      (s, i) => s + (i.available_quantity ?? i.quantity_available ?? 0),
+      0,
+    );
+    const res = colItems.reduce((s, i) => s + (i.reserved_quantity ?? i.quantity_reserved ?? 0), 0);
+    const orderCount = orders.filter((o) => {
+      const code = ((o as any).warehouse_code || o.warehouse_id || "").toUpperCase();
+      return (code === "COLUMBUS" || code.includes("COLUMBUS")) && o.status !== "SHIPPED";
+    }).length;
     return { avail, res, orderCount };
   }, [inventory, orders]);
 
@@ -106,7 +132,10 @@ function Dashboard() {
     let count = 0;
     products.forEach((p) => {
       const pInv = inventory.filter((i) => i.product_id === p.product_id);
-      const avail = pInv.reduce((sum, item) => sum + item.quantity_available, 0);
+      const avail = pInv.reduce(
+        (sum, item) => sum + (item.available_quantity ?? item.quantity_available ?? 0),
+        0,
+      );
       if (avail <= p.reorder_point) count++;
     });
     return count;

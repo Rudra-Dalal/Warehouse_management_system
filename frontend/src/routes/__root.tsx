@@ -4,6 +4,8 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useLocation,
+  useNavigate,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -11,7 +13,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { AuthProvider } from "@/auth/auth-context";
+import { AuthProvider, useAuth } from "@/auth/auth-context";
 import { Toaster } from "sonner";
 
 function NotFoundComponent() {
@@ -134,10 +136,28 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
+        <AuthGate />
         <Toaster position="bottom-right" richColors />
       </AuthProvider>
     </QueryClientProvider>
   );
+}
+
+function AuthGate() {
+  const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isLoginRoute = location.pathname === "/login";
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!isAuthenticated && !isLoginRoute) navigate({ to: "/login", replace: true });
+    if (isAuthenticated && isLoginRoute) navigate({ to: "/", replace: true });
+  }, [isAuthenticated, isLoading, isLoginRoute, navigate]);
+
+  if (isLoading || (!isAuthenticated && !isLoginRoute)) {
+    return <div className="min-h-screen bg-background" />;
+  }
+
+  return <Outlet />;
 }

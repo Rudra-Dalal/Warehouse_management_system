@@ -196,14 +196,19 @@ function ScannerPage() {
     }
   };
 
-  const renoData = inventoryList.find((i) => i.warehouse_id === "RENO") || {
-    quantity_available: 0,
-    quantity_reserved: 0,
+  const getWarehouseData = (wh: string) => {
+    const item = inventoryList.find((i) => {
+      const code = (i.warehouse_code || i.warehouse_id || "").toUpperCase();
+      return code === wh || code.includes(wh);
+    });
+    return {
+      quantity_available: item ? (item.available_quantity ?? item.quantity_available ?? 0) : 0,
+      quantity_reserved: item ? (item.reserved_quantity ?? item.quantity_reserved ?? 0) : 0,
+    };
   };
-  const columbusData = inventoryList.find((i) => i.warehouse_id === "COLUMBUS") || {
-    quantity_available: 0,
-    quantity_reserved: 0,
-  };
+
+  const renoData = getWarehouseData("RENO");
+  const columbusData = getWarehouseData("COLUMBUS");
 
   return (
     <AppShell>

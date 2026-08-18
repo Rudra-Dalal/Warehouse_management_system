@@ -13,7 +13,7 @@ import {
 import { getOrdersApi } from "@/api/orders";
 import { pickOrderApi, packOrderApi, shipOrderApi } from "@/api/fulfillment";
 import { getSellersApi } from "@/api/sellers";
-import { Order, OrderStatus } from "@/types/wms";
+import { Order, OrderStatus, WarehouseId } from "@/types/wms";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/auth-context";
@@ -80,7 +80,7 @@ function FulfillmentPage() {
   const selectedOrder = useMemo(() => {
     if (!orders.length) return null;
     if (selectedOrderId) {
-      const match = orders.find((o) => o.order_id === selectedOrderId);
+      const match = orders.find((o) => (o.order_number || o.order_id || o.id) === selectedOrderId);
       if (match) return match;
     }
     return orders[0];
@@ -126,12 +126,15 @@ function FulfillmentPage() {
       return;
     }
 
+    const orderId = order.id || order.order_id || order.order_number || "";
+    const whId = (order.warehouse_code || order.warehouse_id || "RENO") as WarehouseId;
+
     if (order.status === "RESERVED" || order.status === "CONFIRMED") {
-      pickMutation.mutate({ order_id: order.order_id, warehouse_id: order.warehouse_id });
+      pickMutation.mutate({ order_id: orderId, warehouse_id: whId });
     } else if (order.status === "PICKING") {
-      packMutation.mutate({ order_id: order.order_id, warehouse_id: order.warehouse_id });
+      packMutation.mutate({ order_id: orderId, warehouse_id: whId });
     } else if (order.status === "PACKED") {
-      shipMutation.mutate({ order_id: order.order_id, warehouse_id: order.warehouse_id });
+      shipMutation.mutate({ order_id: orderId, warehouse_id: whId });
     }
   };
 
@@ -215,12 +218,15 @@ function FulfillmentPage() {
           ) : (
             <ul className="divide-y divide-border">
               {orders.map((o) => {
+                const orderId = o.order_number || o.order_id || o.id || "";
                 const totalUnits = o.items.reduce((sum, i) => sum + i.quantity, 0);
-                const isSelected = selectedOrder?.order_id === o.order_id;
+                const isSelected =
+                  (selectedOrder?.order_number || selectedOrder?.order_id || selectedOrder?.id) ===
+                  orderId;
                 return (
-                  <li key={o.order_id}>
+                  <li key={orderId}>
                     <button
-                      onClick={() => setSelectedOrderId(o.order_id)}
+                      onClick={() => setSelectedOrderId(orderId)}
                       className={cn(
                         "flex w-full items-center gap-4 px-4 py-3.5 text-left transition-colors",
                         isSelected ? "bg-surface-2" : "hover:bg-surface-2/60",
@@ -233,10 +239,10 @@ function FulfillmentPage() {
                         )}
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="numeric block text-sm font-medium">{o.order_id}</span>
+                        <span className="numeric block text-sm font-medium">{orderId}</span>
                         <span className="block truncate text-xs text-muted-foreground">
                           {sellerMap.get(o.seller_id) || o.seller_id} · {o.items.length} lines ·{" "}
-                          {totalUnits} units · {o.warehouse_id}
+                          {totalUnits} units · {o.warehouse_code || o.warehouse_id}
                         </span>
                       </span>
                       <StatusPill tone={stageTone(o.status)}>{o.status}</StatusPill>

@@ -23,23 +23,24 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const isBrowser = typeof window !== "undefined";
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(sessionManager.getUser());
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [activeWarehouse, setActiveWarehouseState] = useState<string | null>(
-    localStorage.getItem("activeWarehouse") || null,
+    isBrowser ? localStorage.getItem("activeWarehouse") || null : null,
   );
 
   const setActiveWarehouse = useCallback((wh: string) => {
     setActiveWarehouseState(wh);
-    localStorage.setItem("activeWarehouse", wh);
+    if (isBrowser) localStorage.setItem("activeWarehouse", wh);
   }, []);
 
   const initializeWarehouse = (fetchedUser: User) => {
     if (fetchedUser) {
-      let defaultWh = localStorage.getItem("activeWarehouse");
+      let defaultWh = isBrowser ? localStorage.getItem("activeWarehouse") : null;
       if (fetchedUser.role === "ADMIN") {
         if (!defaultWh) defaultWh = "RENO";
       } else {
@@ -51,7 +52,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setActiveWarehouse(defaultWh);
       } else {
         setActiveWarehouseState(null);
-        localStorage.removeItem("activeWarehouse");
+        if (isBrowser) localStorage.removeItem("activeWarehouse");
       }
     }
   };
@@ -111,7 +112,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sessionManager.clearSession();
     setUser(null);
     setActiveWarehouseState(null);
-    localStorage.removeItem("activeWarehouse");
+    if (isBrowser) localStorage.removeItem("activeWarehouse");
   };
 
   const hasPermission = (permission: Permission) => checkPermission(user, permission);

@@ -15,12 +15,27 @@ venv.bak/
 .env.local
 .env.*.local
 
+# Node & Build artifacts
+node_modules/
+dist/
+dist-ssr/
+.output/
+.vercel/
+.wrangler/
+.tanstack/
+.vinxi/
+.nitro/
+
 # Logs
 *.log
 logs/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
 
 # Local MongoDB runtime data
 backend/.mongo_replset_data/
+.mongo_replset_data/
 
 # Pytest / Coverage
 .pytest_cache/

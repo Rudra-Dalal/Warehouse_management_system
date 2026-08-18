@@ -144,10 +144,10 @@ function OrdersPage() {
       (o) =>
         (stage === "ALL" || o.status === stage) &&
         (!q ||
-          o.order_id.toLowerCase().includes(q) ||
+          (o.order_number || o.order_id || o.id || "").toLowerCase().includes(q) ||
           (sellerMap.get(o.seller_id) || "").toLowerCase().includes(q) ||
-          o.customer_name.toLowerCase().includes(q) ||
-          o.shipping_address.toLowerCase().includes(q)),
+          (o.customer_name || "").toLowerCase().includes(q) ||
+          (o.shipping_address || "").toLowerCase().includes(q)),
     );
   }, [orders, query, stage, sellerMap]);
 
@@ -244,12 +244,14 @@ function OrdersPage() {
               {rows.map((o) => {
                 const totalUnits = o.items.reduce((sum, item) => sum + item.quantity, 0);
                 return (
-                  <Tr key={o.order_id}>
-                    <Td className="numeric font-medium text-xs">{o.order_id}</Td>
+                  <Tr key={o.order_id || o.order_number || o.id}>
+                    <Td className="numeric font-medium text-xs">
+                      {o.order_number || o.order_id || o.id}
+                    </Td>
                     <Td>{sellerMap.get(o.seller_id) || o.seller_id}</Td>
                     <Td className="text-muted-foreground">{o.customer_name}</Td>
                     <Td className="numeric text-[11px] tracking-wider text-muted-foreground">
-                      {o.warehouse_id}
+                      {o.warehouse_code || o.warehouse_id}
                     </Td>
                     <Td align="right" className="numeric">
                       {o.items.length}

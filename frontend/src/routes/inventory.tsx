@@ -102,12 +102,23 @@ function InventoryPage() {
         };
         map.set(inv.product_id, entry);
       }
-      if (inv.warehouse_id === "RENO") {
-        entry.reno.available = inv.quantity_available;
-        entry.reno.reserved = inv.quantity_reserved;
-      } else if (inv.warehouse_id === "COLUMBUS") {
-        entry.columbus.available = inv.quantity_available;
-        entry.columbus.reserved = inv.quantity_reserved;
+      const whCode = (
+        inv.warehouse_code ||
+        (typeof inv.warehouse_id === "string" &&
+        (inv.warehouse_id === "RENO" || inv.warehouse_id === "COLUMBUS")
+          ? inv.warehouse_id
+          : "") ||
+        ""
+      ).toUpperCase();
+      const avail = inv.available_quantity ?? inv.quantity_available ?? 0;
+      const res = inv.reserved_quantity ?? inv.quantity_reserved ?? 0;
+
+      if (whCode === "RENO" || whCode.includes("RENO")) {
+        entry.reno.available = avail;
+        entry.reno.reserved = res;
+      } else if (whCode === "COLUMBUS" || whCode.includes("COLUMBUS")) {
+        entry.columbus.available = avail;
+        entry.columbus.reserved = res;
       }
     });
 

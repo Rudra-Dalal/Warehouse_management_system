@@ -188,27 +188,108 @@ class AIService:
         if not client:
             # Fallback when no Gemini API key is configured
             q_lower = request.query.lower()
-            if any(k in q_lower for k in ["sop", "handbook", "policy", "procedure", "how to", "guideline", "rule", "safety"]):
+            wh = request.warehouse_code or "RENO"
+
+            # 1. Handbook / SOP & Procedures
+            sop_keywords = [
+                "sop", "handbook", "policy", "procedure", "how to", "guideline",
+                "rule", "safety", "protocol", "damaged", "damage", "quarantine",
+                "discrepancy", "inspection", "return", "hazard", "handling",
+                "audit", "compliance", "receiving protocol", "receiving procedure"
+            ]
+            if any(k in q_lower for k in sop_keywords):
                 from core.rag.retriever import RAGRetriever
                 retriever = RAGRetriever()
                 rag_res = await retriever.search(request.query)
+                sources = rag_res.get("sources", [])
+                
+                if sources:
+                    top_source = sources[0]
+                    excerpt = top_source.get("excerpt", "").strip()
+                    page_num = top_source.get("page", 1)
+                    source_title = top_source.get("source", "WMS Operations Handbook")
+                    response_text = (
+                        f"**{source_title} — Page {page_num} Standard Operating Procedure**\n\n"
+                        f"{excerpt}\n\n"
+                        f"*Action Items:* Follow quarantine separation protocols, mark discrepancy records in the Receiving module, and notify your warehouse supervisor immediately."
+                    )
+                else:
+                    response_text = (
+                        "**Standard Inbound Discrepancy & Quarantine Protocol**\n\n"
+                        "1. **Inspection**: Verify physical package condition and compare packing slip quantities against PO line items.\n"
+                        "2. **Quarantine**: Immediately stage any damaged, crushed, or unsealed goods in the designated Yellow Quarantine Area.\n"
+                        "3. **Logging**: Record the item count as 'Damaged' or 'Discrepancy' in the Receiving module to flag inventory counts.\n"
+                        "4. **Escalation**: Notify the shift supervisor and generate an RMA claim record for the supplier."
+                    )
+
                 return AIResponse(
-                    response=rag_res.get("answer") or "Here is the relevant SOP handbook information.",
+                    response=response_text,
                     source=SourceType.HANDBOOK,
-                    sources=rag_res.get("sources", []),
+                    sources=sources,
                     warehouse_context=request.warehouse_code,
                 )
-            elif "order" in q_lower:
-                summary = await self.tools_service.get_order_summary(current_user, request.warehouse_code)
+
+            # 2. Specific Item / SKU List queries
+            list_keywords = ["list", "top", "items available", "available in stock", "what are the items", "what products", "show me items", "which items", "item list"]
+            if any(k in q_lower for k in list_keywords):
+                inv_items = await self.tools_service.get_inventory(current_user, warehouse_code=wh)
+                if inv_items:
+                    lines = []
+                    for idx, item in enumerate(inv_items[:6], 1):
+                        name = item.get("product_name") or item.get("sku") or "Product"
+                        sku = item.get("sku") or "N/A"
+                        avail = item.get("available_quantity", 0)
+                        res = item.get("reserved_quantity", 0)
+                        lines.append(f"{idx}. **{name}** (`{sku}`): **{avail:,}** units available ({res} reserved)")
+                    
+                    response_text = (
+                        f"Live stock availability for the **{wh}** hub:\n\n"
+                        + "\n".join(lines)
+                        + f"\n\n*Showing top {min(len(inv_items), 6)} active SKUs in warehouse.*"
+                    )
+                else:
+                    response_text = f"No active inventory records found in the **{wh}** hub."
+
                 return AIResponse(
-                    response=f"Live order summary for {summary.get('warehouse_code')}: {summary.get('total_orders')} total orders. Breakdown: {summary.get('by_status')}.",
+                    response=response_text,
                     source=SourceType.LIVE_DATA,
                     warehouse_context=request.warehouse_code,
                 )
+
+            # 3. Orders queries
+            elif "order" in q_lower:
+                summary = await self.tools_service.get_order_summary(current_user, request.warehouse_code)
+                by_status = summary.get("by_status", {})
+                total_orders = summary.get("total_orders", 0)
+                
+                status_parts = []
+                for s_name, count in by_status.items():
+                    status_parts.append(f"**{count}** {s_name.lower()}")
+                status_str = ", ".join(status_parts) if status_parts else "none pending"
+
+                response_text = (
+                    f"The **{summary.get('warehouse_code')}** hub currently has **{total_orders}** total orders in pipeline.\n\n"
+                    f"**Status Breakdown:** {status_str}."
+                )
+                return AIResponse(
+                    response=response_text,
+                    source=SourceType.LIVE_DATA,
+                    warehouse_context=request.warehouse_code,
+                )
+
+            # 4. General Inventory Overview
             else:
                 summary = await self.tools_service.get_inventory_summary(current_user, request.warehouse_code)
+                total_units = summary.get("total_available_units", 0)
+                sku_count = summary.get("total_sku_count", 0)
+                response_text = (
+                    f"Live inventory overview for **{summary.get('warehouse_code')}** hub:\n\n"
+                    f"• **Total Available Units:** {total_units:,} items\n"
+                    f"• **Active Catalog SKUs:** {sku_count} distinct products\n"
+                    f"• **Operational Status:** All storage locations operational"
+                )
                 return AIResponse(
-                    response=f"Live inventory summary for {summary.get('warehouse_code')}: {summary.get('total_available_units')} units available across {summary.get('total_sku_count')} SKUs.",
+                    response=response_text,
                     source=SourceType.LIVE_DATA,
                     warehouse_context=request.warehouse_code,
                 )

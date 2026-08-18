@@ -33,6 +33,7 @@ class UserResponse(BaseModel):
     name: str = Field(..., description="Full user name")
     email: str = Field(..., description="User email address")
     role_id: str = Field(..., description="Assigned Role ObjectId string")
+    role: Optional[str] = Field(default=None, description="Assigned security role name")
     is_active: bool = Field(..., description="Active user status")
     created_at: datetime = Field(..., description="Account creation timestamp")
     updated_at: datetime = Field(..., description="Account last updated timestamp")

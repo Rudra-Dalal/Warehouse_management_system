@@ -24,13 +24,16 @@ export type Permission =
   | "audit:read";
 
 export interface User {
-  user_id: string;
-  username: string;
+  user_id?: string;
+  id?: string;
+  username?: string;
+  name?: string;
+  full_name?: string;
   email: string;
-  full_name: string;
-  role: Role;
+  role?: Role | string;
+  role_id?: string;
   permissions?: Permission[];
-  assigned_warehouse_ids: string[];
+  assigned_warehouse_ids?: string[];
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
@@ -69,11 +72,18 @@ export interface Product {
 }
 
 export interface Inventory {
-  inventory_id: string;
-  warehouse_id: WarehouseId;
+  inventory_id?: string;
+  id?: string;
+  warehouse_id: WarehouseId | string;
+  warehouse_code?: WarehouseId | string;
   product_id: string;
-  quantity_available: number;
-  quantity_reserved: number;
+  quantity_available?: number;
+  available_quantity?: number;
+  quantity_reserved?: number;
+  reserved_quantity?: number;
+  damaged_quantity?: number;
+  sku?: string;
+  product_name?: string;
   updated_at?: string;
 }
 
@@ -112,12 +122,15 @@ export interface ReceivingItem {
 }
 
 export interface ReceivingRecord {
-  receiving_id: string;
+  receiving_id?: string;
+  id?: string;
+  receiving_reference?: string;
   seller_id: string;
-  warehouse_id: WarehouseId;
+  warehouse_id: WarehouseId | string;
+  warehouse_code?: WarehouseId | string;
   status: "PENDING" | "COMPLETED" | "DISCREPANCY";
   items: ReceivingItem[];
-  received_by: string;
+  received_by?: string;
   notes?: string | null;
   received_at: string;
   created_at?: string;
@@ -133,11 +146,14 @@ export type OrderStatus =
   "PENDING" | "CONFIRMED" | "RESERVED" | "PICKING" | "PACKED" | "SHIPPED" | "CANCELLED";
 
 export interface Order {
-  order_id: string;
+  order_id?: string;
+  id?: string;
+  order_number?: string;
   seller_id: string;
-  warehouse_id: WarehouseId;
+  warehouse_id: WarehouseId | string;
+  warehouse_code?: WarehouseId | string;
   customer_name: string;
-  shipping_address: string;
+  shipping_address?: string;
   status: OrderStatus;
   items: OrderItem[];
   created_at: string;
