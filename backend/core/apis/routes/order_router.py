@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, status
 
-from commons.auth import get_current_user, require_permission
+from commons.auth import get_current_user, require_permission, authorize_warehouse
 from commons.logger import get_logger
 from core.apis.schemas.requests.order_request import OrderCreateRequest
 from core.apis.schemas.responses.order_response import OrderResponse
@@ -30,6 +30,7 @@ async def create_order(
     current_user: UserModel = Depends(get_current_user),
 ) -> OrderResponse:
     logger.info(f"POST /v1/orders received from user {current_user.id} for order '{request.order_number}'")
+    await authorize_warehouse(current_user, request.warehouse_code)
     return await order_controller.create_and_confirm_order(request, current_user)
 
 
@@ -48,11 +49,23 @@ async def list_orders(
     current_user: UserModel = Depends(get_current_user),
 ) -> List[OrderResponse]:
     logger.info(f"GET /v1/orders requested by user {current_user.id}")
-    return await order_controller.list_orders(
+    if warehouse_code:
+        await authorize_warehouse(current_user, warehouse_code)
+
+    results = await order_controller.list_orders(
         warehouse_code=warehouse_code,
         seller_id=seller_id,
         status=order_status,
     )
+    
+    if not warehouse_code:
+        from core.cruds.role_crud import RoleCRUD
+        role_crud = RoleCRUD()
+        role = await role_crud.get_by_id(current_user.role_id)
+        if not role or role.name != "ADMIN":
+            results = [r for r in results if r.warehouse_code in current_user.assigned_warehouse_ids]
+
+    return results
 
 
 @router.get(
@@ -68,4 +81,6 @@ async def get_order_by_id(
     current_user: UserModel = Depends(get_current_user),
 ) -> OrderResponse:
     logger.info(f"GET /v1/orders/{order_id} requested by user {current_user.id}")
-    return await order_controller.get_order_by_id(order_id)
+    result = await order_controller.get_order_by_id(order_id)
+    await authorize_warehouse(current_user, result.warehouse_code)
+    return result

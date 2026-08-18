@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from commons.auth import get_current_user
+from commons.auth import get_current_user, authorize_warehouse
 from commons.logger import get_logger
 from core.apis.schemas.requests.voice_request import VoiceCommandRequest
 from core.apis.schemas.responses.voice_response import VoiceCommandResponse
@@ -9,6 +9,7 @@ from core.cruds.order_crud import OrderCRUD
 from core.cruds.audit_crud import AuditCRUD
 from core.cruds.role_crud import RoleCRUD
 from core.cruds.permission_crud import PermissionCRUD
+from bson import ObjectId
 
 from core.apis.schemas.requests.inventory_request import InventoryAdjustmentRequest
 from core.controllers.inventory_controller import InventoryController
@@ -57,6 +58,9 @@ async def process_voice_command(
         upc = entities.get("upc")
         warehouse_id = entities.get("warehouse_id")
 
+        if warehouse_id:
+            await authorize_warehouse(current_user, warehouse_id)
+
         product = None
         if sku:
             product = await product_crud.get_by_sku(sku)
@@ -67,6 +71,20 @@ async def process_voice_command(
             inv_list = await inventory_crud.list_inventory(
                 warehouse_id=warehouse_id, product_id=str(product.id)
             )
+            # Filter for assigned warehouses if no specific warehouse requested
+            if not warehouse_id:
+                from core.cruds.role_crud import RoleCRUD
+                role_crud = RoleCRUD()
+                role = await role_crud.get_by_id(current_user.role_id)
+                if not role or role.name != "ADMIN":
+                    db = DatabaseManager.get_db()
+                    filtered_inv_list = []
+                    for item in inv_list:
+                        wh = await db["warehouses"].find_one({"_id": ObjectId(item.warehouse_id)})
+                        if wh and wh["code"] in current_user.assigned_warehouse_ids:
+                            filtered_inv_list.append(item)
+                    inv_list = filtered_inv_list
+
             data = {
                 "product": {
                     "sku": product.sku,
@@ -90,6 +108,19 @@ async def process_voice_command(
             )
         else:
             inv_list = await inventory_crud.list_inventory(warehouse_id=warehouse_id)
+            if not warehouse_id:
+                from core.cruds.role_crud import RoleCRUD
+                role_crud = RoleCRUD()
+                role = await role_crud.get_by_id(current_user.role_id)
+                if not role or role.name != "ADMIN":
+                    db = DatabaseManager.get_db()
+                    filtered_inv_list = []
+                    for item in inv_list:
+                        wh = await db["warehouses"].find_one({"_id": ObjectId(item.warehouse_id)})
+                        if wh and wh["code"] in current_user.assigned_warehouse_ids:
+                            filtered_inv_list.append(item)
+                    inv_list = filtered_inv_list
+
             total_avail = sum(i.available_quantity for i in inv_list)
             return VoiceCommandResponse(
                 intent=intent,
@@ -135,6 +166,11 @@ async def process_voice_command(
         if order_id:
             order = await order_crud.get_by_id(order_id)
             if order:
+                db = DatabaseManager.get_db()
+                wh = await db["warehouses"].find_one({"_id": ObjectId(order.warehouse_id)})
+                if wh:
+                    await authorize_warehouse(current_user, wh["code"])
+                
                 return VoiceCommandResponse(
                     intent=intent,
                     status="success",
@@ -148,6 +184,19 @@ async def process_voice_command(
                     },
                 )
         orders = await order_crud.list_orders()
+        
+        from core.cruds.role_crud import RoleCRUD
+        role_crud = RoleCRUD()
+        role = await role_crud.get_by_id(current_user.role_id)
+        if not role or role.name != "ADMIN":
+            db = DatabaseManager.get_db()
+            filtered_orders = []
+            for order in orders:
+                wh = await db["warehouses"].find_one({"_id": ObjectId(order.warehouse_id)})
+                if wh and wh["code"] in current_user.assigned_warehouse_ids:
+                    filtered_orders.append(order)
+            orders = filtered_orders
+            
         return VoiceCommandResponse(
             intent=intent,
             status="success",
@@ -170,6 +219,9 @@ async def process_voice_command(
 
         sku = entities.get("sku")
         warehouse_id = entities.get("warehouse_id") or "RENO"
+        
+        await authorize_warehouse(current_user, warehouse_id)
+        
         quantity_delta = entities.get("quantity", 0)
 
         product = await product_crud.get_by_sku(sku) if sku else None

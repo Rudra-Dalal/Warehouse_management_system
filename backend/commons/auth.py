@@ -157,3 +157,35 @@ def require_role(required_role: str) -> Callable:
         return current_user
 
     return role_dependency
+
+
+async def authorize_warehouse(current_user: UserModel, warehouse_identifier: str) -> bool:
+    """Validates if the user has access to the specified warehouse.
+    ADMIN role has unrestricted access.
+    Returns True if authorized, raises HTTP 403 Forbidden otherwise.
+    
+    Args:
+        current_user (UserModel): The authenticated user.
+        warehouse_identifier (str): The warehouse code or ID to check.
+    """
+    if not warehouse_identifier:
+        return True # If no specific warehouse is requested, we don't restrict. Let specific endpoints handle filtering if needed.
+
+    role_crud = RoleCRUD()
+    role = await role_crud.get_by_id(current_user.role_id)
+    
+    if role and role.name == "ADMIN":
+        return True
+        
+    if warehouse_identifier not in current_user.assigned_warehouse_ids:
+        logger.warning(
+            f"Warehouse scope check failed for user {current_user.email}: "
+            f"requested '{warehouse_identifier}', assigned {current_user.assigned_warehouse_ids}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Forbidden: You do not have access to warehouse '{warehouse_identifier}'",
+        )
+        
+    return True
+

@@ -13,6 +13,7 @@ class UserModel(BaseModel):
     email: str = Field(..., description="Unique lowercased user email address")
     password_hash: str = Field(..., description="Securely hashed bcrypt password string")
     role_id: str = Field(..., description="ObjectId reference to assigned Role document")
+    assigned_warehouse_ids: list[str] = Field(default_factory=list, description="List of assigned Warehouse codes/IDs")
     is_active: bool = Field(default=True, description="Active user status flag")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
