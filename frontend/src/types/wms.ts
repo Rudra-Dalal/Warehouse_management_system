@@ -30,6 +30,7 @@ export interface User {
   full_name: string;
   role: Role;
   permissions?: Permission[];
+  assigned_warehouse_ids: string[];
   is_active: boolean;
   created_at?: string;
   updated_at?: string;

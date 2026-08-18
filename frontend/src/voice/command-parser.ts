@@ -14,7 +14,9 @@ export type VoiceIntent =
   | "dashboard_lookup"
   | "adjust_inventory"
   | "reserve_inventory"
+  | "receive_inventory"
   | "unknown";
+
 
 export interface ParsedEntities {
   sku?: string;
@@ -141,7 +143,44 @@ export function parseVoiceCommand(transcript: string, confidence = 0.95): VoiceC
     };
   }
 
-  // 3. Read: Fulfillment Lookup
+  // 3. Mutating: Receive Inventory
+  if (
+    text.includes("receive") ||
+    text.includes("inbound") ||
+    text.includes("log receipt") ||
+    text.includes("dock receipt")
+  ) {
+    if (!entities.sku && !entities.upc) {
+      return {
+        intent: "receive_inventory",
+        entities,
+        isMutating: true,
+        originalTranscript: rawText,
+        confidence,
+        clarificationNeeded: "Please specify the product SKU or UPC to receive.",
+      };
+    }
+    if (entities.quantity === undefined || entities.quantity <= 0) {
+      return {
+        intent: "receive_inventory",
+        entities,
+        isMutating: true,
+        originalTranscript: rawText,
+        confidence,
+        clarificationNeeded: "Please state the quantity of units received.",
+      };
+    }
+
+    return {
+      intent: "receive_inventory",
+      entities,
+      isMutating: true,
+      originalTranscript: rawText,
+      confidence,
+    };
+  }
+
+  // 4. Read: Fulfillment Lookup
   if (
     text.includes("fulfillment") ||
     text.includes("ready to pack") ||

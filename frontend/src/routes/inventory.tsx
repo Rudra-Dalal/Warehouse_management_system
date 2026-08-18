@@ -37,7 +37,7 @@ const FILTERS = ["All", "Low stock", "Critical"] as const;
 
 function InventoryPage() {
   const queryClient = useQueryClient();
-  const { hasPermission } = useAuth();
+  const { hasPermission, activeWarehouse } = useAuth();
   const canAdjust = hasPermission("inventory:adjust");
   const canReserve = hasPermission("inventory:reserve");
 
@@ -63,8 +63,8 @@ function InventoryPage() {
   });
 
   const { data: inventory = [], isLoading: loadingInventory, isError, error } = useQuery({
-    queryKey: ["inventory"],
-    queryFn: () => getInventoryApi(),
+    queryKey: ["inventory", activeWarehouse],
+    queryFn: () => getInventoryApi({ warehouse_code: activeWarehouse || undefined }),
   });
 
   const { data: sellers = [] } = useQuery({

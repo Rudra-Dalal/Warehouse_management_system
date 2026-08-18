@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as FulfillmentRouteImport } from './routes/fulfillment'
 import { Route as InventoryRouteImport } from './routes/inventory'
+import { Route as KnowledgeRouteImport } from './routes/knowledge'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as ProductsRouteImport } from './routes/products'
@@ -39,6 +40,11 @@ const FulfillmentRoute = FulfillmentRouteImport.update({
 const InventoryRoute = InventoryRouteImport.update({
   id: '/inventory',
   path: '/inventory',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KnowledgeRoute = KnowledgeRouteImport.update({
+  id: '/knowledge',
+  path: '/knowledge',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/audit': typeof AuditRoute
   '/fulfillment': typeof FulfillmentRoute
   '/inventory': typeof InventoryRoute
+  '/knowledge': typeof KnowledgeRoute
   '/login': typeof LoginRoute
   '/orders': typeof OrdersRoute
   '/products': typeof ProductsRoute
@@ -95,6 +102,7 @@ export interface FileRoutesByTo {
   '/audit': typeof AuditRoute
   '/fulfillment': typeof FulfillmentRoute
   '/inventory': typeof InventoryRoute
+  '/knowledge': typeof KnowledgeRoute
   '/login': typeof LoginRoute
   '/orders': typeof OrdersRoute
   '/products': typeof ProductsRoute
@@ -109,6 +117,7 @@ export interface FileRoutesById {
   '/audit': typeof AuditRoute
   '/fulfillment': typeof FulfillmentRoute
   '/inventory': typeof InventoryRoute
+  '/knowledge': typeof KnowledgeRoute
   '/login': typeof LoginRoute
   '/orders': typeof OrdersRoute
   '/products': typeof ProductsRoute
@@ -124,6 +133,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/fulfillment'
     | '/inventory'
+    | '/knowledge'
     | '/login'
     | '/orders'
     | '/products'
@@ -137,6 +147,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/fulfillment'
     | '/inventory'
+    | '/knowledge'
     | '/login'
     | '/orders'
     | '/products'
@@ -150,6 +161,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/fulfillment'
     | '/inventory'
+    | '/knowledge'
     | '/login'
     | '/orders'
     | '/products'
@@ -164,6 +176,7 @@ export interface RootRouteChildren {
   AuditRoute: typeof AuditRoute
   FulfillmentRoute: typeof FulfillmentRoute
   InventoryRoute: typeof InventoryRoute
+  KnowledgeRoute: typeof KnowledgeRoute
   LoginRoute: typeof LoginRoute
   OrdersRoute: typeof OrdersRoute
   ProductsRoute: typeof ProductsRoute
@@ -201,6 +214,13 @@ declare module '@tanstack/react-router' {
       path: '/inventory'
       fullPath: '/inventory'
       preLoaderRoute: typeof InventoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/knowledge': {
+      id: '/knowledge'
+      path: '/knowledge'
+      fullPath: '/knowledge'
+      preLoaderRoute: typeof KnowledgeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -260,6 +280,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuditRoute: AuditRoute,
   FulfillmentRoute: FulfillmentRoute,
   InventoryRoute: InventoryRoute,
+  KnowledgeRoute: KnowledgeRoute,
   LoginRoute: LoginRoute,
   OrdersRoute: OrdersRoute,
   ProductsRoute: ProductsRoute,

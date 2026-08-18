@@ -54,7 +54,7 @@ const stageTone = (s: OrderStatus) =>
 
 function OrdersPage() {
   const queryClient = useQueryClient();
-  const { hasPermission } = useAuth();
+  const { hasPermission, activeWarehouse } = useAuth();
   const canWrite = hasPermission("order:write");
 
   const [query, setQuery] = useState("");
@@ -70,8 +70,8 @@ function OrdersPage() {
   const [quantity, setQuantity] = useState<number>(1);
 
   const { data: orders = [], isLoading, isError, error } = useQuery({
-    queryKey: ["orders"],
-    queryFn: getOrdersApi,
+    queryKey: ["orders", activeWarehouse],
+    queryFn: () => getOrdersApi(activeWarehouse || undefined),
   });
 
   const { data: sellers = [] } = useQuery({

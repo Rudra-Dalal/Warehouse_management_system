@@ -11,8 +11,12 @@ from core.cruds.role_crud import RoleCRUD
 from core.cruds.permission_crud import PermissionCRUD
 from bson import ObjectId
 
+from uuid import uuid4
 from core.apis.schemas.requests.inventory_request import InventoryAdjustmentRequest
+from core.apis.schemas.requests.receiving_request import ReceivingCreateRequest, ReceivingItemRequest
 from core.controllers.inventory_controller import InventoryController
+from core.controllers.receiving_controller import ReceivingController
+from core.cruds.seller_crud import SellerCRUD
 from core.database.database import DatabaseManager
 from core.models.user_model import UserModel
 
@@ -24,7 +28,9 @@ product_crud = ProductCRUD()
 inventory_crud = InventoryCRUD()
 order_crud = OrderCRUD()
 audit_crud = AuditCRUD()
+seller_crud = SellerCRUD()
 inventory_controller = InventoryController()
+receiving_controller = ReceivingController()
 
 
 @router.post("/command", response_model=VoiceCommandResponse)
@@ -40,7 +46,7 @@ async def process_voice_command(
     entities = request.entities
 
     # 1. Mutating Commands require confirmation flag
-    if intent in ("adjust_inventory", "reserve_inventory"):
+    if intent in ("adjust_inventory", "reserve_inventory", "receive_inventory"):
         if not request.confirmed:
             return VoiceCommandResponse(
                 intent=intent,
@@ -263,6 +269,79 @@ async def process_voice_command(
             },
         )
 
+    # Intent: Mutating Receive Inventory
+    elif intent == "receive_inventory":
+        role_crud = RoleCRUD()
+        role = await role_crud.get_by_id(current_user.role_id)
+        permission_crud = PermissionCRUD()
+        permissions = await permission_crud.get_by_ids(role.permission_ids) if role else []
+        perm_names = [p.name for p in permissions]
+        if "receiving:write" not in perm_names:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: 'receiving:write' required for voice inbound receiving.",
+            )
+
+        sku = entities.get("sku")
+        upc = entities.get("upc")
+        product_id = entities.get("product_id")
+        warehouse_code = (entities.get("warehouse_id") or entities.get("warehouse_code") or "RENO").upper()
+        quantity = int(entities.get("quantity") or entities.get("quantity_received") or 0)
+        seller_id = entities.get("seller_id")
+
+        if quantity <= 0:
+            return VoiceCommandResponse(
+                intent=intent,
+                status="error",
+                message="Received quantity must be greater than zero.",
+            )
+
+        await authorize_warehouse(current_user, warehouse_code)
+
+        product = None
+        if product_id:
+            product = await product_crud.get_by_id(product_id)
+        elif sku:
+            product = await product_crud.get_by_sku(sku)
+        elif upc:
+            product = await product_crud.get_by_upc(upc)
+
+        if not product:
+            return VoiceCommandResponse(
+                intent=intent,
+                status="error",
+                message=f"Product with identifier (SKU: {sku}, UPC: {upc}) not found.",
+            )
+
+        # Resolve seller
+        if not seller_id:
+            seller_id = product.seller_id
+
+        rec_ref = f"VOICE-REC-{uuid4().hex[:8].upper()}"
+        receiving_res = await receiving_controller.receive_shipment(
+            request=ReceivingCreateRequest(
+                receiving_reference=rec_ref,
+                warehouse_code=warehouse_code,
+                seller_id=seller_id,
+                items=[ReceivingItemRequest(product_id=str(product.id), quantity=quantity)],
+            ),
+            current_user=current_user,
+        )
+
+        return VoiceCommandResponse(
+            intent=intent,
+            status="success",
+            message=f"Successfully received {quantity} units of {product.name} ({sku or product.sku}) into {warehouse_code} hub. Reference: {rec_ref}.",
+            data={
+                "receiving_id": receiving_res.id,
+                "receiving_reference": receiving_res.receiving_reference,
+                "warehouse_code": receiving_res.warehouse_code,
+                "product_id": str(product.id),
+                "sku": product.sku,
+                "quantity_received": quantity,
+            },
+        )
+
     # Fallback/General Intent Query
     return VoiceCommandResponse(
         intent=intent,
@@ -270,3 +349,4 @@ async def process_voice_command(
         message=f"Processed query '{request.transcript}' successfully.",
         data={"intent": intent, "entities": entities},
     )
+

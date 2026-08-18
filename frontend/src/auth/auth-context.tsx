@@ -13,6 +13,8 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  activeWarehouse: string | null;
+  setActiveWarehouse: (wh: string) => void;
   login: (credentials: LoginPayload) => Promise<void>;
   logout: () => void;
   refetchUser: () => Promise<void>;
@@ -26,6 +28,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(sessionManager.getUser());
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeWarehouse, setActiveWarehouseState] = useState<string | null>(
+    localStorage.getItem("activeWarehouse") || null
+  );
+
+  const setActiveWarehouse = useCallback((wh: string) => {
+    setActiveWarehouseState(wh);
+    localStorage.setItem("activeWarehouse", wh);
+  }, []);
+
+  const initializeWarehouse = (fetchedUser: User) => {
+    if (fetchedUser) {
+        let defaultWh = localStorage.getItem("activeWarehouse");
+        if (fetchedUser.role === "ADMIN") {
+            if (!defaultWh) defaultWh = "RENO";
+        } else {
+            if (!defaultWh || !fetchedUser.assigned_warehouse_ids?.includes(defaultWh)) {
+                defaultWh = fetchedUser.assigned_warehouse_ids?.[0] || null;
+            }
+        }
+        if (defaultWh) {
+            setActiveWarehouse(defaultWh);
+        } else {
+            setActiveWarehouseState(null);
+            localStorage.removeItem("activeWarehouse");
+        }
+    }
+  }
 
   const refetchUser = useCallback(async () => {
     const token = sessionManager.getToken();
@@ -39,6 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const currentUser = await getCurrentUserApi();
       setUser(currentUser);
       sessionManager.setSession(token, currentUser);
+      initializeWarehouse(currentUser);
     } catch (err: any) {
       console.warn("Failed to validate active session on startup:", err);
       sessionManager.clearSession();
@@ -46,13 +76,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [setActiveWarehouse]);
 
   useEffect(() => {
     refetchUser();
 
     const unsubscribe = sessionManager.subscribe((session) => {
       setUser(session ? session.user : null);
+      if (session?.user) {
+        initializeWarehouse(session.user);
+      }
     });
 
     return () => unsubscribe();
@@ -65,6 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await loginApi(credentials);
       sessionManager.setSession(response.access_token, response.user);
       setUser(response.user);
+      initializeWarehouse(response.user);
     } catch (err: any) {
       setError(err.message || "Failed to sign in. Check email and password.");
       throw err;
@@ -76,6 +110,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     sessionManager.clearSession();
     setUser(null);
+    setActiveWarehouseState(null);
+    localStorage.removeItem("activeWarehouse");
   };
 
   const hasPermission = (permission: Permission) => checkPermission(user, permission);
@@ -88,6 +124,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: !!user,
         isLoading,
         error,
+        activeWarehouse,
+        setActiveWarehouse,
         login,
         logout,
         refetchUser,

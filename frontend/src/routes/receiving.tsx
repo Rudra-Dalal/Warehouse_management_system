@@ -1,16 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Loader2, AlertCircle } from "lucide-react";
+import { Plus, Loader2, AlertCircle, Mic, MicOff, Check, X, Volume2, Sparkles } from "lucide-react";
 import { AppShell } from "@/components/whitfield/app-shell";
 import { PageHeader, Button, StatusPill, Input, EmptyState } from "@/components/whitfield/primitives";
 import { Table, THead, Tr, Td, TableFooter } from "@/components/whitfield/table";
 import { getReceivingRecordsApi, createReceivingRecordApi } from "@/api/receiving";
 import { getSellersApi } from "@/api/sellers";
 import { getProductsApi } from "@/api/products";
+import { executeVoiceCommandApi, VoiceCommandApiResponse } from "@/api/voice";
+import { parseVoiceCommand } from "@/voice/command-parser";
 import { WarehouseId } from "@/types/wms";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/auth-context";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/receiving")({
   head: () => ({
@@ -19,7 +22,7 @@ export const Route = createFileRoute("/receiving")({
       {
         name: "description",
         content:
-          "Inbound shipments by warehouse with expected versus received counts and discrepancy flags.",
+          "Inbound shipments by warehouse with expected versus received counts, voice receiving workflow, and discrepancy flags.",
       },
     ],
   }),
@@ -40,9 +43,10 @@ const statusTone = (status: string) => {
 
 function ReceivingPage() {
   const queryClient = useQueryClient();
-  const { hasPermission } = useAuth();
+  const { hasPermission, activeWarehouse } = useAuth();
   const canWrite = hasPermission("receiving:write");
 
+  // Manual Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [sellerId, setSellerId] = useState("");
   const [warehouseId, setWarehouseId] = useState<WarehouseId>("RENO");
@@ -50,9 +54,17 @@ function ReceivingPage() {
   const [qtyReceived, setQtyReceived] = useState<number>(0);
   const [notes, setNotes] = useState("");
 
+  // Voice Receiving State
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const [voicePendingResponse, setVoicePendingResponse] = useState<VoiceCommandApiResponse | null>(null);
+  const [voiceEntities, setVoiceEntities] = useState<any>(null);
+  const recognitionRef = useRef<any>(null);
+
   const { data: receivingRecords = [], isLoading, isError, error } = useQuery({
-    queryKey: ["receiving"],
-    queryFn: getReceivingRecordsApi,
+    queryKey: ["receiving", activeWarehouse],
+    queryFn: () => getReceivingRecordsApi(activeWarehouse || undefined),
   });
 
   const { data: sellers = [] } = useQuery({
@@ -77,6 +89,7 @@ function ReceivingPage() {
     return map;
   }, [products]);
 
+  // Manual Inbound Mutation
   const createMutation = useMutation({
     mutationFn: createReceivingRecordApi,
     onSuccess: (record) => {
@@ -94,7 +107,104 @@ function ReceivingPage() {
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Voice Command Mutation
+  const voiceMutation = useMutation({
+    mutationFn: executeVoiceCommandApi,
+    onSuccess: (res) => {
+      if (res.requires_confirmation || res.status === "confirmation_required") {
+        setVoicePendingResponse(res);
+      } else if (res.status === "success") {
+        toast.success(res.message);
+        queryClient.invalidateQueries({ queryKey: ["receiving"] });
+        queryClient.invalidateQueries({ queryKey: ["inventory"] });
+        setIsVoiceModalOpen(false);
+        setVoicePendingResponse(null);
+        setTranscript("");
+        setVoiceEntities(null);
+      } else {
+        toast.error(res.message);
+      }
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Voice receiving operation failed.");
+    },
+  });
+
+  // Speech Recognition Setup
+  useEffect(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onresult = (event: any) => {
+        const text = Array.from(event.results)
+          .map((result: any) => result[0].transcript)
+          .join("");
+        setTranscript(text);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.warn("Speech recognition error:", event.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+    }
+  }, []);
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+    } else {
+      setTranscript("");
+      setVoicePendingResponse(null);
+      try {
+        recognitionRef.current?.start();
+        setIsListening(true);
+      } catch (err) {
+        console.warn("Could not start speech recognition:", err);
+      }
+    }
+  };
+
+  const handleVoiceParseAndSubmit = (text: string) => {
+    if (!text.trim()) return;
+    const parsed = parseVoiceCommand(text);
+    const resolvedWh = parsed.entities.warehouse_id || (activeWarehouse as WarehouseId) || "RENO";
+    const payloadEntities = {
+      ...parsed.entities,
+      warehouse_id: resolvedWh,
+    };
+    setVoiceEntities(payloadEntities);
+
+    voiceMutation.mutate({
+      transcript: text,
+      intent: parsed.intent === "receive_inventory" ? "receive_inventory" : "receive_inventory",
+      entities: payloadEntities,
+      confirmed: false,
+    });
+  };
+
+  const handleConfirmVoiceReceiving = () => {
+    if (!voiceEntities) return;
+    voiceMutation.mutate({
+      transcript: transcript || "Confirmed voice receiving",
+      intent: "receive_inventory",
+      entities: voiceEntities,
+      confirmed: true,
+    });
+  };
+
+  const handleSubmitManual = (e: React.FormEvent) => {
     e.preventDefault();
     if (!sellerId || !productId || qtyReceived <= 0) {
       toast.error("Please select a seller, product, and valid received quantity.");
@@ -120,12 +230,25 @@ function ReceivingPage() {
       <PageHeader
         eyebrow="Operations"
         title="Receiving"
-        description="Inbound shipments across Reno and Columbus, counted against seller manifests."
+        description="Inbound shipments across Reno and Columbus hubs, verified with voice AI and manual receipts."
         actions={
           canWrite ? (
-            <Button variant="primary" onClick={() => setIsModalOpen(true)}>
-              <Plus className="mr-1.5 size-4" /> Log receipt
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setIsVoiceModalOpen(true);
+                  setTranscript("");
+                  setVoicePendingResponse(null);
+                }}
+                className="text-signal hover:bg-signal/10 border border-signal/30"
+              >
+                <Mic className="mr-1.5 size-4" /> Voice Inbound
+              </Button>
+              <Button variant="primary" onClick={() => setIsModalOpen(true)}>
+                <Plus className="mr-1.5 size-4" /> Log receipt
+              </Button>
+            </div>
           ) : undefined
         }
       />
@@ -151,7 +274,9 @@ function ReceivingPage() {
         ) : isError ? (
           <div className="flex flex-col items-center justify-center p-12 text-danger">
             <AlertCircle className="size-8" />
-            <p className="mt-3 text-sm font-medium">{(error as any)?.message || "Failed to load receiving records"}</p>
+            <p className="mt-3 text-sm font-medium">
+              {(error as any)?.message || "Failed to load receiving records"}
+            </p>
           </div>
         ) : receivingRecords.length === 0 ? (
           <EmptyState
@@ -200,12 +325,159 @@ function ReceivingPage() {
         <TableFooter count={receivingRecords.length} total={receivingRecords.length} />
       </div>
 
+      {/* Voice Receiving Confirmation Modal */}
+      {isVoiceModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <div className="grid size-8 place-items-center rounded-lg bg-signal/10 text-signal">
+                  <Mic className="size-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-foreground">Voice Inbound Receiving</h3>
+                  <p className="text-xs text-muted-foreground">Speak or type your receipt command</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsVoiceModalOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            {/* Voice Control & Input */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-center gap-3 p-4 rounded-xl border border-border bg-surface-2">
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  className={cn(
+                    "grid size-14 place-items-center rounded-full transition-all cursor-pointer shadow-md",
+                    isListening
+                      ? "bg-danger text-white ring-4 ring-danger/20 scale-105 animate-pulse"
+                      : "bg-signal text-signal-foreground hover:opacity-90"
+                  )}
+                >
+                  {isListening ? <MicOff className="size-6" /> : <Mic className="size-6" />}
+                </button>
+                <div className="text-left">
+                  <p className="text-xs font-semibold text-foreground">
+                    {isListening ? "Listening... Speak clearly" : "Click mic to speak"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    e.g. "Receive 50 units of SKU-1048 at Reno hub"
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Input
+                  value={transcript}
+                  onChange={(e) => setTranscript(e.target.value)}
+                  placeholder="Or type voice command manually..."
+                  className="text-sm bg-background"
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => handleVoiceParseAndSubmit(transcript)}
+                  disabled={!transcript.trim() || voiceMutation.isPending}
+                >
+                  {voiceMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : "Parse"}
+                </Button>
+              </div>
+            </div>
+
+            {/* Confirmation Card (Authoritative Check Step) */}
+            {voicePendingResponse && (
+              <div className="anim-rise rounded-xl border border-signal/30 bg-signal/5 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-signal flex items-center gap-1.5">
+                    <Sparkles className="size-3.5" /> Confirmation Required
+                  </span>
+                  <StatusPill tone="signal">Awaiting Authorization</StatusPill>
+                </div>
+
+                <p className="text-xs text-foreground/90 leading-relaxed font-medium">
+                  {voicePendingResponse.message}
+                </p>
+
+                <div className="rounded-lg bg-surface border border-border/80 p-3 space-y-1.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Intent:</span>
+                    <span className="font-mono font-medium">RECEIVE_INVENTORY</span>
+                  </div>
+                  {voiceEntities?.sku && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Product SKU:</span>
+                      <span className="font-mono font-medium">{voiceEntities.sku}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Target Hub:</span>
+                    <span className="font-mono font-medium">
+                      {voiceEntities?.warehouse_id || activeWarehouse || "RENO"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Quantity to Receive:</span>
+                    <span className="font-mono font-semibold text-ok">
+                      +{voiceEntities?.quantity || 0} units
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setVoicePendingResponse(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleConfirmVoiceReceiving}
+                    disabled={voiceMutation.isPending}
+                    className="bg-ok hover:bg-ok/90 text-white"
+                  >
+                    {voiceMutation.isPending ? (
+                      <Loader2 className="size-4 animate-spin mr-1.5" />
+                    ) : (
+                      <Check className="size-4 mr-1.5" />
+                    )}
+                    Confirm & Receive Stock
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {!voicePendingResponse && (
+              <div className="flex justify-end pt-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsVoiceModalOpen(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       {/* Log Receipt Modal */}
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-xs p-4">
           <div className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl space-y-4">
-            <h3 className="text-lg font-semibold tracking-tight text-foreground">Log Inbound Receipt</h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <h3 className="text-lg font-semibold tracking-tight text-foreground">
+              Log Inbound Receipt
+            </h3>
+            <form onSubmit={handleSubmitManual} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Seller *

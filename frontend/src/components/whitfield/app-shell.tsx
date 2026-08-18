@@ -14,16 +14,20 @@ import {
   Search,
   Menu,
   X,
+  Mic,
+  MapPin,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "./command-palette";
 import { VoiceModal } from "./voice-modal";
-import { Mic } from "lucide-react";
-
+import { useAuth } from "@/auth/auth-context";
+import { LogOut } from "lucide-react";
 
 export type NavPath =
   | "/"
+  | "/knowledge"
   | "/inventory"
   | "/products"
   | "/sellers"
@@ -39,7 +43,10 @@ type NavItem = { to: NavPath; label: string; icon: LucideIcon };
 export const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "Overview",
-    items: [{ to: "/", label: "Dashboard", icon: LayoutDashboard }],
+    items: [
+      { to: "/", label: "Dashboard", icon: LayoutDashboard },
+      { to: "/knowledge", label: "Knowledge Center", icon: Sparkles },
+    ],
   },
   {
     group: "Catalog",
@@ -130,9 +137,6 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-import { useAuth } from "@/auth/auth-context";
-import { LogOut } from "lucide-react";
-
 function SidebarFooter() {
   const { user, logout } = useAuth();
   const initials = user?.full_name
@@ -172,6 +176,51 @@ function SidebarFooter() {
   );
 }
 
+function GlobalWarehouseSelector() {
+  const { user, activeWarehouse, setActiveWarehouse } = useAuth();
+  
+  if (!user) return null;
+
+  const availableWarehouses = user.role === "ADMIN" 
+    ? ["RENO", "COLUMBUS"] 
+    : user.assigned_warehouse_ids || [];
+
+  if (availableWarehouses.length === 0) {
+    return (
+      <div className="flex items-center gap-1.5 px-2">
+        <span className="pulse-dot size-1.5 rounded-full bg-danger" />
+        <span className="text-[11px] font-medium tracking-wider text-danger uppercase">
+          No Access
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="pulse-dot size-1.5 rounded-full bg-ok" />
+      <div className="relative flex items-center">
+        <MapPin className="absolute left-2 size-3.5 text-muted-foreground" />
+        <select
+          value={activeWarehouse || ""}
+          onChange={(e) => setActiveWarehouse(e.target.value)}
+          className="h-8 appearance-none rounded-md border border-border bg-surface pl-7 pr-8 text-[11px] font-semibold tracking-wider text-foreground uppercase outline-none transition-colors hover:bg-surface-2 focus:border-signal focus:ring-1 focus:ring-signal"
+        >
+          {availableWarehouses.map((wh) => (
+            <option key={wh} value={wh}>
+              {wh}
+            </option>
+          ))}
+        </select>
+        <div className="pointer-events-none absolute right-2 flex items-center">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+            <path d="m6 9 6 6 6-6"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -257,10 +306,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden items-center gap-2 md:flex">
-              <span className="pulse-dot size-1.5 rounded-full bg-ok" />
-              <span className="numeric text-[11px] tracking-wider text-muted-foreground uppercase">
-                Reno · Columbus online
-              </span>
+              <GlobalWarehouseSelector />
             </span>
           </div>
         </header>

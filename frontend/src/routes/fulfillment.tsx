@@ -45,14 +45,14 @@ const stageTone = (s: OrderStatus) =>
 
 function FulfillmentPage() {
   const queryClient = useQueryClient();
-  const { hasPermission } = useAuth();
+  const { hasPermission, activeWarehouse } = useAuth();
   const canWrite = hasPermission("fulfillment:write");
 
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   const { data: orders = [], isLoading, isError, error } = useQuery({
-    queryKey: ["orders"],
-    queryFn: getOrdersApi,
+    queryKey: ["orders", activeWarehouse],
+    queryFn: () => getOrdersApi(activeWarehouse || undefined),
   });
 
   const { data: sellers = [] } = useQuery({

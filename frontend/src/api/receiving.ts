@@ -12,8 +12,11 @@ export interface CreateReceivingPayload {
   notes?: string;
 }
 
-export async function getReceivingRecordsApi(): Promise<ReceivingRecord[]> {
-  return api.get<ReceivingRecord[]>("/v1/receiving/");
+export async function getReceivingRecordsApi(warehouse_code?: string): Promise<ReceivingRecord[]> {
+  const queryParams = new URLSearchParams();
+  if (warehouse_code) queryParams.append("warehouse_code", warehouse_code);
+  const queryStr = queryParams.toString();
+  return api.get<ReceivingRecord[]>(`/v1/receiving/${queryStr ? `?${queryStr}` : ""}`);
 }
 
 export async function getReceivingRecordByIdApi(receivingId: string): Promise<ReceivingRecord> {
