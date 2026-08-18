@@ -68,7 +68,7 @@ export function hasRole(user: User | null, roles: Role | Role[]): boolean {
 
 export function hasPermission(user: User | null, permission: Permission): boolean {
   if (!user || !user.is_active) return false;
-  
+
   // If user object carries backend granted permissions array, use that
   if (user.permissions && Array.isArray(user.permissions) && user.permissions.length > 0) {
     return user.permissions.includes(permission);

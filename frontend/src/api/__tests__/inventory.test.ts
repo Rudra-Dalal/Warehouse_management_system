@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getInventoryApi, adjustInventoryApi, reserveInventoryApi, getInventoryMovementsApi } from "../inventory";
+import {
+  getInventoryApi,
+  adjustInventoryApi,
+  reserveInventoryApi,
+  getInventoryMovementsApi,
+} from "../inventory";
 import { api } from "../client";
 
 vi.mock("../client", () => ({
@@ -16,7 +21,13 @@ describe("Inventory API Module", () => {
 
   it("should fetch inventory list with query parameters", async () => {
     const mockInv = [
-      { inventory_id: "inv1", warehouse_id: "RENO", product_id: "p1", quantity_available: 100, quantity_reserved: 10 },
+      {
+        inventory_id: "inv1",
+        warehouse_id: "RENO",
+        product_id: "p1",
+        quantity_available: 100,
+        quantity_reserved: 10,
+      },
     ];
     (api.get as any).mockResolvedValue(mockInv);
 
@@ -57,7 +68,13 @@ describe("Inventory API Module", () => {
 
   it("should fetch inventory movement history", async () => {
     const mockMovements = [
-      { movement_id: "m1", warehouse_id: "RENO", product_id: "p1", movement_type: "ADJUSTMENT", quantity_delta: 10 },
+      {
+        movement_id: "m1",
+        warehouse_id: "RENO",
+        product_id: "p1",
+        movement_type: "ADJUSTMENT",
+        quantity_delta: 10,
+      },
     ];
     (api.get as any).mockResolvedValue(mockMovements);
 

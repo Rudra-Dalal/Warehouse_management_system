@@ -3,7 +3,13 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { AppShell } from "@/components/whitfield/app-shell";
-import { PageHeader, Button, StatusPill, Panel, EmptyState } from "@/components/whitfield/primitives";
+import {
+  PageHeader,
+  Button,
+  StatusPill,
+  Panel,
+  EmptyState,
+} from "@/components/whitfield/primitives";
 import { getOrdersApi } from "@/api/orders";
 import { pickOrderApi, packOrderApi, shipOrderApi } from "@/api/fulfillment";
 import { getSellersApi } from "@/api/sellers";
@@ -38,10 +44,10 @@ const stageTone = (s: OrderStatus) =>
   s === "SHIPPED"
     ? "ok"
     : s === "PACKED"
-    ? "info"
-    : s === "PICKING" || s === "RESERVED"
-    ? "signal"
-    : "neutral";
+      ? "info"
+      : s === "PICKING" || s === "RESERVED"
+        ? "signal"
+        : "neutral";
 
 function FulfillmentPage() {
   const queryClient = useQueryClient();
@@ -50,7 +56,12 @@ function FulfillmentPage() {
 
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
-  const { data: orders = [], isLoading, isError, error } = useQuery({
+  const {
+    data: orders = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ["orders", activeWarehouse],
     queryFn: () => getOrdersApi(activeWarehouse || undefined),
   });
@@ -133,7 +144,10 @@ function FulfillmentPage() {
         title="Fulfillment"
         description="Orders progress through confirmed, reserved, picking, packed and shipped states in live MongoDB."
         actions={
-          <Button variant="ghost" onClick={() => queryClient.invalidateQueries({ queryKey: ["orders"] })}>
+          <Button
+            variant="ghost"
+            onClick={() => queryClient.invalidateQueries({ queryKey: ["orders"] })}
+          >
             <RefreshCw className="mr-1.5 size-4" /> Refresh Pipeline
           </Button>
         }
@@ -144,20 +158,22 @@ function FulfillmentPage() {
         <div className="flex min-w-[720px] divide-x divide-border">
           {counts.map(({ stage, count }) => {
             const active = selectedOrder?.status === stage;
-            const currentIdx = selectedOrder ? FULFILLMENT_PIPELINE.indexOf(selectedOrder.status) : -1;
+            const currentIdx = selectedOrder
+              ? FULFILLMENT_PIPELINE.indexOf(selectedOrder.status)
+              : -1;
             const passed = FULFILLMENT_PIPELINE.indexOf(stage) < currentIdx;
             return (
               <div key={stage} className="relative flex-1 px-4 py-5">
                 <div
                   className={cn(
                     "absolute inset-x-0 top-0 h-[2px] transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                    active ? "bg-signal" : passed ? "bg-foreground/30" : "bg-transparent"
+                    active ? "bg-signal" : passed ? "bg-foreground/30" : "bg-transparent",
                   )}
                 />
                 <p
                   className={cn(
                     "numeric text-[11px] tracking-[0.16em] uppercase transition-colors",
-                    active ? "text-signal" : "text-muted-foreground"
+                    active ? "text-signal" : "text-muted-foreground",
                   )}
                 >
                   {stage}
@@ -165,7 +181,7 @@ function FulfillmentPage() {
                 <div
                   className={cn(
                     "numeric mt-3 text-3xl leading-none font-semibold transition-colors",
-                    active ? "text-foreground" : "text-muted-foreground"
+                    active ? "text-foreground" : "text-muted-foreground",
                   )}
                 >
                   {count}
@@ -187,10 +203,15 @@ function FulfillmentPage() {
           ) : isError ? (
             <div className="flex flex-col items-center justify-center p-12 text-danger">
               <AlertCircle className="size-8" />
-              <p className="mt-3 text-sm font-medium">{(error as any)?.message || "Failed to load orders"}</p>
+              <p className="mt-3 text-sm font-medium">
+                {(error as any)?.message || "Failed to load orders"}
+              </p>
             </div>
           ) : orders.length === 0 ? (
-            <EmptyState title="No orders in queue" description="Create an order in Orders page to begin fulfillment." />
+            <EmptyState
+              title="No orders in queue"
+              description="Create an order in Orders page to begin fulfillment."
+            />
           ) : (
             <ul className="divide-y divide-border">
               {orders.map((o) => {
@@ -202,19 +223,20 @@ function FulfillmentPage() {
                       onClick={() => setSelectedOrderId(o.order_id)}
                       className={cn(
                         "flex w-full items-center gap-4 px-4 py-3.5 text-left transition-colors",
-                        isSelected ? "bg-surface-2" : "hover:bg-surface-2/60"
+                        isSelected ? "bg-surface-2" : "hover:bg-surface-2/60",
                       )}
                     >
                       <span
                         className={cn(
                           "h-8 w-[2px] rounded-full transition-colors",
-                          isSelected ? "bg-signal" : "bg-transparent"
+                          isSelected ? "bg-signal" : "bg-transparent",
                         )}
                       />
                       <span className="min-w-0 flex-1">
                         <span className="numeric block text-sm font-medium">{o.order_id}</span>
                         <span className="block truncate text-xs text-muted-foreground">
-                          {sellerMap.get(o.seller_id) || o.seller_id} · {o.items.length} lines · {totalUnits} units · {o.warehouse_id}
+                          {sellerMap.get(o.seller_id) || o.seller_id} · {o.items.length} lines ·{" "}
+                          {totalUnits} units · {o.warehouse_id}
                         </span>
                       </span>
                       <StatusPill tone={stageTone(o.status)}>{o.status}</StatusPill>
@@ -289,7 +311,7 @@ function OrderDetail({
                 <span
                   className={cn(
                     "absolute top-3 left-[5px] h-full w-px transition-colors duration-500",
-                    done ? "bg-foreground/30" : "bg-border"
+                    done ? "bg-foreground/30" : "bg-border",
                   )}
                 />
               ) : null}
@@ -299,8 +321,8 @@ function OrderDetail({
                   active
                     ? "scale-125 border-signal bg-signal"
                     : done
-                    ? "border-foreground/40 bg-foreground/40"
-                    : "border-border-strong bg-surface"
+                      ? "border-foreground/40 bg-foreground/40"
+                      : "border-border-strong bg-surface",
                 )}
               />
               <span className="min-w-0">
@@ -310,8 +332,8 @@ function OrderDetail({
                     active
                       ? "font-semibold text-foreground"
                       : done
-                      ? "text-muted-foreground"
-                      : "text-muted-foreground/60"
+                        ? "text-muted-foreground"
+                        : "text-muted-foreground/60",
                   )}
                 >
                   {s}

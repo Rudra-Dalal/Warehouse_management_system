@@ -6,33 +6,33 @@ import { api } from "./client";
 import { Inventory, InventoryMovement, Reservation, WarehouseId } from "@/types/wms";
 
 export interface GetInventoryParams {
-  warehouse_code?: WarehouseId | string;
-  warehouse_id?: WarehouseId | string;
-  product_id?: string;
-  sku?: string;
+  warehouse_code?: WarehouseId | string | undefined;
+  warehouse_id?: WarehouseId | string | undefined;
+  product_id?: string | undefined;
+  sku?: string | undefined;
 }
 
 export interface AdjustInventoryPayload {
-  warehouse_code?: WarehouseId | string;
-  warehouse_id?: WarehouseId | string;
+  warehouse_code?: WarehouseId | string | undefined;
+  warehouse_id?: WarehouseId | string | undefined;
   product_id: string;
   quantity_delta: number;
-  reason?: string;
+  reason?: string | undefined;
 }
 
 export interface ReserveInventoryPayload {
   order_id: string;
-  warehouse_code?: WarehouseId | string;
-  warehouse_id?: WarehouseId | string;
+  warehouse_code?: WarehouseId | string | undefined;
+  warehouse_id?: WarehouseId | string | undefined;
   product_id: string;
   quantity: number;
 }
 
 export interface GetMovementsParams {
-  warehouse_code?: WarehouseId | string;
-  warehouse_id?: WarehouseId | string;
-  product_id?: string;
-  limit?: number;
+  warehouse_code?: WarehouseId | string | undefined;
+  warehouse_id?: WarehouseId | string | undefined;
+  product_id?: string | undefined;
+  limit?: number | undefined;
 }
 
 export async function getInventoryApi(params?: GetInventoryParams): Promise<Inventory[]> {
@@ -51,7 +51,7 @@ export async function getInventoryApi(params?: GetInventoryParams): Promise<Inve
 
 export async function getInventoryItemApi(
   warehouseCode: WarehouseId | string,
-  productId: string
+  productId: string,
 ): Promise<Inventory> {
   return api.get<Inventory>(`/v1/inventory/${warehouseCode}/${productId}`);
 }
@@ -65,7 +65,7 @@ export async function reserveInventoryApi(payload: ReserveInventoryPayload): Pro
 }
 
 export async function getInventoryMovementsApi(
-  params?: GetMovementsParams
+  params?: GetMovementsParams,
 ): Promise<InventoryMovement[]> {
   const queryParams = new URLSearchParams();
   if (params?.warehouse_code) queryParams.append("warehouse_code", params.warehouse_code);
@@ -77,4 +77,3 @@ export async function getInventoryMovementsApi(
   const endpoint = `/v1/inventory/movements${queryStr ? `?${queryStr}` : ""}`;
   return api.get<InventoryMovement[]>(endpoint);
 }
-

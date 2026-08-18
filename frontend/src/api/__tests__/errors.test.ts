@@ -3,10 +3,13 @@ import { parseApiError, createNetworkError, WmsApiError } from "../errors";
 
 describe("WMS Error System", () => {
   it("should format 401 unauthenticated errors", async () => {
-    const mockResponse = new Response(JSON.stringify({ detail: "Could not validate credentials" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    const mockResponse = new Response(
+      JSON.stringify({ detail: "Could not validate credentials" }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
     const err = await parseApiError(mockResponse);
     expect(err).toBeInstanceOf(WmsApiError);
     expect(err.status).toBe(401);
@@ -21,13 +24,13 @@ describe("WMS Error System", () => {
           { loc: ["body", "password"], msg: "ensure this value has at least 8 characters" },
         ],
       }),
-      { status: 422, headers: { "Content-Type": "application/json" } }
+      { status: 422, headers: { "Content-Type": "application/json" } },
     );
     const err = await parseApiError(mockResponse);
     expect(err.status).toBe(422);
     expect(err.fieldErrors).toBeDefined();
     expect(err.fieldErrors?.length).toBe(2);
-    expect(err.fieldErrors?.[0].field).toBe("email");
+    expect(err.fieldErrors![0]!.field).toBe("email");
   });
 
   it("should format network error properly", () => {

@@ -12,7 +12,10 @@
 import { sessionManager } from "@/auth/session";
 import { createNetworkError, parseApiError, WmsApiError } from "./errors";
 
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const BASE_URL = (
+  (import.meta.env as Record<string, string | undefined>)["VITE_API_BASE_URL"] ||
+  "http://127.0.0.1:8000"
+).replace(/\/$/, "");
 
 export interface RequestOptions extends RequestInit {
   timeoutMs?: number;
@@ -20,9 +23,17 @@ export interface RequestOptions extends RequestInit {
 }
 
 export async function apiClient<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const { timeoutMs = 15000, skipAuth = false, headers: customHeaders, body, ...customOptions } = options;
+  const {
+    timeoutMs = 15000,
+    skipAuth = false,
+    headers: customHeaders,
+    body,
+    ...customOptions
+  } = options;
 
-  const url = endpoint.startsWith("http") ? endpoint : `${BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+  const url = endpoint.startsWith("http")
+    ? endpoint
+    : `${BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -42,12 +53,15 @@ export async function apiClient<T>(endpoint: string, options: RequestOptions = {
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    const fetchInit: RequestInit = {
       ...customOptions,
       headers,
-      body: body ? (typeof body === "string" ? body : JSON.stringify(body)) : undefined,
       signal: controller.signal,
-    });
+    };
+    if (body !== undefined && body !== null) {
+      fetchInit.body = typeof body === "string" ? body : JSON.stringify(body);
+    }
+    response = await fetch(url, fetchInit);
   } catch (err: any) {
     clearTimeout(timeoutId);
     if (err.name === "AbortError") {

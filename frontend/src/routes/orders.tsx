@@ -47,10 +47,10 @@ const stageTone = (s: OrderStatus) =>
   s === "SHIPPED"
     ? "ok"
     : s === "PACKED"
-    ? "info"
-    : s === "PICKING" || s === "RESERVED"
-    ? "signal"
-    : "neutral";
+      ? "info"
+      : s === "PICKING" || s === "RESERVED"
+        ? "signal"
+        : "neutral";
 
 function OrdersPage() {
   const queryClient = useQueryClient();
@@ -69,7 +69,12 @@ function OrdersPage() {
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState<number>(1);
 
-  const { data: orders = [], isLoading, isError, error } = useQuery({
+  const {
+    data: orders = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ["orders", activeWarehouse],
     queryFn: () => getOrdersApi(activeWarehouse || undefined),
   });
@@ -109,7 +114,13 @@ function OrdersPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sellerId || !customerName.trim() || !shippingAddress.trim() || !productId || quantity <= 0) {
+    if (
+      !sellerId ||
+      !customerName.trim() ||
+      !shippingAddress.trim() ||
+      !productId ||
+      quantity <= 0
+    ) {
       toast.error("Please fill in seller, customer, address, product, and valid quantity.");
       return;
     }
@@ -136,7 +147,7 @@ function OrdersPage() {
           o.order_id.toLowerCase().includes(q) ||
           (sellerMap.get(o.seller_id) || "").toLowerCase().includes(q) ||
           o.customer_name.toLowerCase().includes(q) ||
-          o.shipping_address.toLowerCase().includes(q))
+          o.shipping_address.toLowerCase().includes(q)),
     );
   }, [orders, query, stage, sellerMap]);
 
@@ -179,7 +190,7 @@ function OrdersPage() {
                 "numeric rounded-sm px-2.5 py-1.5 text-[11px] tracking-wider transition-colors",
                 stage === s
                   ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               {s}
@@ -197,7 +208,9 @@ function OrdersPage() {
         ) : isError ? (
           <div className="flex flex-col items-center justify-center p-12 text-danger">
             <AlertCircle className="size-8" />
-            <p className="mt-3 text-sm font-medium">{(error as any)?.message || "Failed to load orders"}</p>
+            <p className="mt-3 text-sm font-medium">
+              {(error as any)?.message || "Failed to load orders"}
+            </p>
           </div>
         ) : rows.length === 0 ? (
           <EmptyState
@@ -260,7 +273,9 @@ function OrdersPage() {
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-xs p-4">
           <div className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl space-y-4">
-            <h3 className="text-lg font-semibold tracking-tight text-foreground">Create Customer Order</h3>
+            <h3 className="text-lg font-semibold tracking-tight text-foreground">
+              Create Customer Order
+            </h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">

@@ -129,7 +129,8 @@ export interface OrderItem {
   unit_price?: number;
 }
 
-export type OrderStatus = "PENDING" | "CONFIRMED" | "RESERVED" | "PICKING" | "PACKED" | "SHIPPED" | "CANCELLED";
+export type OrderStatus =
+  "PENDING" | "CONFIRMED" | "RESERVED" | "PICKING" | "PACKED" | "SHIPPED" | "CANCELLED";
 
 export interface Order {
   order_id: string;

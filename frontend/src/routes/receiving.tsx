@@ -3,7 +3,13 @@ import { useMemo, useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Loader2, AlertCircle, Mic, MicOff, Check, X, Volume2, Sparkles } from "lucide-react";
 import { AppShell } from "@/components/whitfield/app-shell";
-import { PageHeader, Button, StatusPill, Input, EmptyState } from "@/components/whitfield/primitives";
+import {
+  PageHeader,
+  Button,
+  StatusPill,
+  Input,
+  EmptyState,
+} from "@/components/whitfield/primitives";
 import { Table, THead, Tr, Td, TableFooter } from "@/components/whitfield/table";
 import { getReceivingRecordsApi, createReceivingRecordApi } from "@/api/receiving";
 import { getSellersApi } from "@/api/sellers";
@@ -58,11 +64,18 @@ function ReceivingPage() {
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
-  const [voicePendingResponse, setVoicePendingResponse] = useState<VoiceCommandApiResponse | null>(null);
+  const [voicePendingResponse, setVoicePendingResponse] = useState<VoiceCommandApiResponse | null>(
+    null,
+  );
   const [voiceEntities, setVoiceEntities] = useState<any>(null);
   const recognitionRef = useRef<any>(null);
 
-  const { data: receivingRecords = [], isLoading, isError, error } = useQuery({
+  const {
+    data: receivingRecords = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ["receiving", activeWarehouse],
     queryFn: () => getReceivingRecordsApi(activeWarehouse || undefined),
   });
@@ -258,9 +271,7 @@ function ReceivingPage() {
           <span className="size-1.5 rounded-full bg-danger" />
           <p className="text-sm">
             <span className="font-medium">{discrepancies} receiving discrepancies</span>{" "}
-            <span className="text-muted-foreground">
-              flagged in live database records.
-            </span>
+            <span className="text-muted-foreground">flagged in live database records.</span>
           </p>
         </div>
       ) : null}
@@ -335,8 +346,12 @@ function ReceivingPage() {
                   <Mic className="size-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-semibold text-foreground">Voice Inbound Receiving</h3>
-                  <p className="text-xs text-muted-foreground">Speak or type your receipt command</p>
+                  <h3 className="text-base font-semibold text-foreground">
+                    Voice Inbound Receiving
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Speak or type your receipt command
+                  </p>
                 </div>
               </div>
               <button
@@ -357,7 +372,7 @@ function ReceivingPage() {
                     "grid size-14 place-items-center rounded-full transition-all cursor-pointer shadow-md",
                     isListening
                       ? "bg-danger text-white ring-4 ring-danger/20 scale-105 animate-pulse"
-                      : "bg-signal text-signal-foreground hover:opacity-90"
+                      : "bg-signal text-signal-foreground hover:opacity-90",
                   )}
                 >
                   {isListening ? <MicOff className="size-6" /> : <Mic className="size-6" />}
@@ -430,11 +445,7 @@ function ReceivingPage() {
                 </div>
 
                 <div className="flex justify-end gap-2 pt-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setVoicePendingResponse(null)}
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => setVoicePendingResponse(null)}>
                     Cancel
                   </Button>
                   <Button
@@ -457,11 +468,7 @@ function ReceivingPage() {
 
             {!voicePendingResponse && (
               <div className="flex justify-end pt-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsVoiceModalOpen(false)}
-                >
+                <Button variant="ghost" size="sm" onClick={() => setIsVoiceModalOpen(false)}>
                   Close
                 </Button>
               </div>

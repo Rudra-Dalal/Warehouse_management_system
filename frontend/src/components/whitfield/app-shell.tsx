@@ -178,12 +178,11 @@ function SidebarFooter() {
 
 function GlobalWarehouseSelector() {
   const { user, activeWarehouse, setActiveWarehouse } = useAuth();
-  
+
   if (!user) return null;
 
-  const availableWarehouses = user.role === "ADMIN" 
-    ? ["RENO", "COLUMBUS"] 
-    : user.assigned_warehouse_ids || [];
+  const availableWarehouses =
+    user.role === "ADMIN" ? ["RENO", "COLUMBUS"] : user.assigned_warehouse_ids || [];
 
   if (availableWarehouses.length === 0) {
     return (
@@ -213,8 +212,18 @@ function GlobalWarehouseSelector() {
           ))}
         </select>
         <div className="pointer-events-none absolute right-2 flex items-center">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
-            <path d="m6 9 6 6 6-6"/>
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-muted-foreground"
+          >
+            <path d="m6 9 6 6 6-6" />
           </svg>
         </div>
       </div>
@@ -321,4 +330,3 @@ export function AppShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
-

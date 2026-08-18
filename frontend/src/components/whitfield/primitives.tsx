@@ -103,8 +103,7 @@ export function Button({
         size === "sm" ? "h-8 px-2.5 text-xs" : "h-9 px-3.5 text-sm",
         variant === "primary" &&
           "border-primary bg-primary text-primary-foreground hover:bg-primary/90",
-        variant === "signal" &&
-          "border-signal bg-signal text-signal-foreground hover:bg-signal/90",
+        variant === "signal" && "border-signal bg-signal text-signal-foreground hover:bg-signal/90",
         variant === "secondary" &&
           "border-border bg-surface text-foreground hover:border-border-strong hover:bg-surface-2",
         variant === "ghost" &&

@@ -15,7 +15,11 @@ describe("Fulfillment API Module", () => {
   });
 
   it("should post pick order request", async () => {
-    const payload = { order_id: "ord-1", warehouse_id: "RENO" as const, notes: "Picked from Bin A2" };
+    const payload = {
+      order_id: "ord-1",
+      warehouse_id: "RENO" as const,
+      notes: "Picked from Bin A2",
+    };
     const mockRes = { fulfillment_id: "f1", ...payload, action: "PICK" };
     (api.post as any).mockResolvedValue(mockRes);
 
@@ -45,7 +49,10 @@ describe("Fulfillment API Module", () => {
   });
 
   it("should fetch fulfillment history for order", async () => {
-    const mockHistory = [{ fulfillment_id: "f1", action: "PICK" }, { fulfillment_id: "f2", action: "PACK" }];
+    const mockHistory = [
+      { fulfillment_id: "f1", action: "PICK" },
+      { fulfillment_id: "f2", action: "PACK" },
+    ];
     (api.get as any).mockResolvedValue(mockHistory);
 
     const result = await getFulfillmentHistoryApi("ord-1");

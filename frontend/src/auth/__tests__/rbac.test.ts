@@ -8,6 +8,7 @@ const adminUser: User = {
   email: "admin@whitfield.com",
   full_name: "Admin User",
   role: "ADMIN",
+  assigned_warehouse_ids: ["RENO", "COLUMBUS"],
   is_active: true,
 };
 
@@ -17,6 +18,7 @@ const clerkUser: User = {
   email: "clerk@whitfield.com",
   full_name: "Clerk User",
   role: "INVENTORY_CLERK",
+  assigned_warehouse_ids: ["RENO"],
   is_active: true,
 };
 
@@ -26,6 +28,7 @@ const inactiveUser: User = {
   email: "inactive@whitfield.com",
   full_name: "Inactive User",
   role: "ADMIN",
+  assigned_warehouse_ids: ["RENO"],
   is_active: false,
 };
 

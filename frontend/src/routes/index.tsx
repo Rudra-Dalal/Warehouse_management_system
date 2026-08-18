@@ -46,7 +46,7 @@ function Dashboard() {
 
   const { data: orders = [], isLoading: loadingOrders } = useQuery({
     queryKey: ["orders"],
-    queryFn: getOrdersApi,
+    queryFn: () => getOrdersApi(),
   });
 
   const { data: auditLogs = [] } = useQuery({
@@ -73,19 +73,21 @@ function Dashboard() {
   // Calculations
   const totalAvailable = useMemo(
     () => inventory.reduce((sum, item) => sum + item.quantity_available, 0),
-    [inventory]
+    [inventory],
   );
 
   const activeOrdersCount = useMemo(
     () => orders.filter((o) => o.status !== "SHIPPED" && o.status !== "CANCELLED").length,
-    [orders]
+    [orders],
   );
 
   const renoData = useMemo(() => {
     const renoItems = inventory.filter((i) => i.warehouse_id === "RENO");
     const avail = renoItems.reduce((s, i) => s + i.quantity_available, 0);
     const res = renoItems.reduce((s, i) => s + i.quantity_reserved, 0);
-    const orderCount = orders.filter((o) => o.warehouse_id === "RENO" && o.status !== "SHIPPED").length;
+    const orderCount = orders.filter(
+      (o) => o.warehouse_id === "RENO" && o.status !== "SHIPPED",
+    ).length;
     return { avail, res, orderCount };
   }, [inventory, orders]);
 
@@ -93,7 +95,9 @@ function Dashboard() {
     const colItems = inventory.filter((i) => i.warehouse_id === "COLUMBUS");
     const avail = colItems.reduce((s, i) => s + i.quantity_available, 0);
     const res = colItems.reduce((s, i) => s + i.quantity_reserved, 0);
-    const orderCount = orders.filter((o) => o.warehouse_id === "COLUMBUS" && o.status !== "SHIPPED").length;
+    const orderCount = orders.filter(
+      (o) => o.warehouse_id === "COLUMBUS" && o.status !== "SHIPPED",
+    ).length;
     return { avail, res, orderCount };
   }, [inventory, orders]);
 
@@ -114,10 +118,10 @@ function Dashboard() {
     s === "SHIPPED"
       ? "ok"
       : s === "PACKED"
-      ? "info"
-      : s === "PICKING" || s === "RESERVED"
-      ? "signal"
-      : "neutral";
+        ? "info"
+        : s === "PICKING" || s === "RESERVED"
+          ? "signal"
+          : "neutral";
 
   return (
     <AppShell>
@@ -128,7 +132,11 @@ function Dashboard() {
         <div className="mt-9 grid gap-8 border-t border-border pt-8 sm:grid-cols-3">
           <div>
             <div className="numeric display-lg">
-              {isLoading ? <Loader2 className="size-8 animate-spin" /> : totalAvailable.toLocaleString()}
+              {isLoading ? (
+                <Loader2 className="size-8 animate-spin" />
+              ) : (
+                totalAvailable.toLocaleString()
+              )}
             </div>
             <p className="mt-2 text-sm text-muted-foreground">available units across network</p>
           </div>
@@ -151,9 +159,21 @@ function Dashboard() {
         <Panel title="Attention & Operational Quick Links" meta="Requires action this shift">
           <ul className="divide-y divide-border">
             {[
-              { label: `${attentionItemsCount} SKUs below reorder point threshold`, to: "/inventory", tone: "bg-danger" },
-              { label: `${activeOrdersCount} orders requiring pick/pack/ship`, to: "/fulfillment", tone: "bg-signal" },
-              { label: "Scan UPC barcode to verify stock position", to: "/scanner", tone: "bg-info" },
+              {
+                label: `${attentionItemsCount} SKUs below reorder point threshold`,
+                to: "/inventory",
+                tone: "bg-danger",
+              },
+              {
+                label: `${activeOrdersCount} orders requiring pick/pack/ship`,
+                to: "/fulfillment",
+                tone: "bg-signal",
+              },
+              {
+                label: "Scan UPC barcode to verify stock position",
+                to: "/scanner",
+                tone: "bg-info",
+              },
             ].map((a) => (
               <li key={a.label}>
                 <Link
@@ -174,8 +194,18 @@ function Dashboard() {
         <Panel title="Warehouse Hubs" meta="Available · reserved">
           <div className="divide-y divide-border">
             {[
-              { name: "RENO HUB", avail: renoData.avail, res: renoData.res, orders: renoData.orderCount },
-              { name: "COLUMBUS HUB", avail: columbusData.avail, res: columbusData.res, orders: columbusData.orderCount },
+              {
+                name: "RENO HUB",
+                avail: renoData.avail,
+                res: renoData.res,
+                orders: renoData.orderCount,
+              },
+              {
+                name: "COLUMBUS HUB",
+                avail: columbusData.avail,
+                res: columbusData.res,
+                orders: columbusData.orderCount,
+              },
             ].map((w) => (
               <div key={w.name} className="px-4 py-4">
                 <div className="flex items-baseline justify-between">
@@ -214,7 +244,9 @@ function Dashboard() {
           }
         >
           {orders.length === 0 ? (
-            <div className="p-6 text-xs text-muted-foreground">No active orders in fulfillment.</div>
+            <div className="p-6 text-xs text-muted-foreground">
+              No active orders in fulfillment.
+            </div>
           ) : (
             <ul className="divide-y divide-border">
               {orders.slice(0, 5).map((o) => (
@@ -250,7 +282,10 @@ function Dashboard() {
               {auditLogs.slice(0, 5).map((e) => (
                 <li key={e.audit_id} className="flex gap-4 px-4 py-3">
                   <span className="numeric w-20 shrink-0 pt-0.5 text-[11px] text-muted-foreground">
-                    {new Date(e.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {new Date(e.timestamp).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </span>
                   <span className="min-w-0">
                     <span className="block text-sm font-medium">{e.action}</span>

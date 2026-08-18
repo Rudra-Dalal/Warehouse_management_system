@@ -17,8 +17,12 @@ describe("Controlled User Onboarding & Request Access UX", () => {
 
   it("3 & 4: Should open and close Request Access dialog", () => {
     let isOpen = false;
-    const openDialog = () => { isOpen = true; };
-    const closeDialog = () => { isOpen = false; };
+    const openDialog = () => {
+      isOpen = true;
+    };
+    const closeDialog = () => {
+      isOpen = false;
+    };
 
     openDialog();
     expect(isOpen).toBe(true);
@@ -60,12 +64,15 @@ describe("Controlled User Onboarding & Request Access UX", () => {
 
   it("7: Should transition to success confirmation state upon submission", () => {
     let submitted = false;
-    const handleSubmit = () => { submitted = true; };
+    const handleSubmit = () => {
+      submitted = true;
+    };
 
     handleSubmit();
     expect(submitted).toBe(true);
     const confirmationTitle = "Access Request Submitted";
-    const confirmationBody = "Your request details have been recorded. Please contact your warehouse administrator for account creation and role activation.";
+    const confirmationBody =
+      "Your request details have been recorded. Please contact your warehouse administrator for account creation and role activation.";
 
     expect(confirmationTitle).toBe("Access Request Submitted");
     expect(confirmationBody).not.toContain("Your account has been created");

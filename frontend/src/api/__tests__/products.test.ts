@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getProductsApi, getProductBySkuApi, getProductByUpcApi, createProductApi } from "../products";
+import {
+  getProductsApi,
+  getProductBySkuApi,
+  getProductByUpcApi,
+  createProductApi,
+} from "../products";
 import { api } from "../client";
 
 vi.mock("../client", () => ({
@@ -19,7 +24,15 @@ describe("Products API Module", () => {
 
   it("should fetch list of products", async () => {
     const mockProducts = [
-      { product_id: "p1", sku: "SKU-100", name: "Keyboard", upc: "012345678905", seller_id: "s1", reorder_point: 50, is_active: true },
+      {
+        product_id: "p1",
+        sku: "SKU-100",
+        name: "Keyboard",
+        upc: "012345678905",
+        seller_id: "s1",
+        reorder_point: 50,
+        is_active: true,
+      },
     ];
     (api.get as any).mockResolvedValue(mockProducts);
 

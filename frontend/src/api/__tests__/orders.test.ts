@@ -16,7 +16,15 @@ describe("Orders API Module", () => {
 
   it("should fetch list of orders", async () => {
     const mockOrders = [
-      { order_id: "ord-1", seller_id: "s1", warehouse_id: "RENO", customer_name: "Alice", shipping_address: "123 St", status: "CONFIRMED", items: [] },
+      {
+        order_id: "ord-1",
+        seller_id: "s1",
+        warehouse_id: "RENO",
+        customer_name: "Alice",
+        shipping_address: "123 St",
+        status: "CONFIRMED",
+        items: [],
+      },
     ];
     (api.get as any).mockResolvedValue(mockOrders);
 
@@ -42,7 +50,12 @@ describe("Orders API Module", () => {
       shipping_address: "456 Ave",
       items: [{ product_id: "p1", quantity: 2 }],
     };
-    const mockRes = { order_id: "ord-2", ...payload, status: "CONFIRMED", created_at: "2026-08-13" };
+    const mockRes = {
+      order_id: "ord-2",
+      ...payload,
+      status: "CONFIRMED",
+      created_at: "2026-08-13",
+    };
     (api.post as any).mockResolvedValue(mockRes);
 
     const result = await createOrderApi(payload);

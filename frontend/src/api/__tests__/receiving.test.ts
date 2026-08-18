@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getReceivingRecordsApi, getReceivingRecordByIdApi, createReceivingRecordApi } from "../receiving";
+import {
+  getReceivingRecordsApi,
+  getReceivingRecordByIdApi,
+  createReceivingRecordApi,
+} from "../receiving";
 import { api } from "../client";
 
 vi.mock("../client", () => ({
@@ -16,7 +20,15 @@ describe("Receiving API Module", () => {
 
   it("should fetch receiving records", async () => {
     const mockRecs = [
-      { receiving_id: "rec1", seller_id: "s1", warehouse_id: "RENO", status: "COMPLETED", items: [], received_by: "u1", received_at: "2026-08-13T10:00:00Z" },
+      {
+        receiving_id: "rec1",
+        seller_id: "s1",
+        warehouse_id: "RENO",
+        status: "COMPLETED",
+        items: [],
+        received_by: "u1",
+        received_at: "2026-08-13T10:00:00Z",
+      },
     ];
     (api.get as any).mockResolvedValue(mockRecs);
 
@@ -41,7 +53,13 @@ describe("Receiving API Module", () => {
       items: [{ product_id: "p1", quantity_received: 100 }],
       notes: "Pallet 1",
     };
-    const mockRes = { receiving_id: "rec2", ...payload, status: "COMPLETED", received_by: "u1", received_at: "2026-08-13" };
+    const mockRes = {
+      receiving_id: "rec2",
+      ...payload,
+      status: "COMPLETED",
+      received_by: "u1",
+      received_at: "2026-08-13",
+    };
     (api.post as any).mockResolvedValue(mockRes);
 
     const result = await createReceivingRecordApi(payload);

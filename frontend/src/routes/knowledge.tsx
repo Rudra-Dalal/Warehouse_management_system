@@ -29,8 +29,7 @@ export const Route = createFileRoute("/knowledge")({
       { title: "Knowledge Center & AI Assistant — Whitfield Fulfillment" },
       {
         name: "description",
-        content:
-          "Grounded WMS operational assistant with live tools and handbook vector RAG.",
+        content: "Grounded WMS operational assistant with live tools and handbook vector RAG.",
       },
     ],
   }),
@@ -84,7 +83,7 @@ function KnowledgePage() {
     mutationFn: triggerKnowledgeIngestApi,
     onSuccess: (res) => {
       toast.success(
-        `Handbook ingested: ${res.stats?.inserted ?? 0} chunks added (${res.stats?.pages ?? 0} pages).`
+        `Handbook ingested: ${res.stats?.inserted ?? 0} chunks added (${res.stats?.pages ?? 0} pages).`,
       );
       queryClient.invalidateQueries({ queryKey: ["knowledge-status"] });
     },
@@ -268,9 +267,12 @@ function KnowledgePage() {
             <div className="grid size-12 place-items-center rounded-2xl bg-surface-2 text-muted-foreground mb-3">
               <Sparkles className="size-6" />
             </div>
-            <h3 className="text-sm font-semibold text-foreground">Operational Intelligence Ready</h3>
+            <h3 className="text-sm font-semibold text-foreground">
+              Operational Intelligence Ready
+            </h3>
             <p className="text-xs text-muted-foreground max-w-sm mt-1">
-              Ask questions to query real-time warehouse data or extract standard procedures from the official WMS handbook.
+              Ask questions to query real-time warehouse data or extract standard procedures from
+              the official WMS handbook.
             </p>
           </div>
         )}
@@ -291,19 +293,19 @@ function KnowledgePage() {
                     item.response.source === "LIVE_DATA"
                       ? "ok"
                       : item.response.source === "HANDBOOK"
-                      ? "signal"
-                      : item.response.source === "COMBINED"
-                      ? "warn"
-                      : "neutral"
+                        ? "signal"
+                        : item.response.source === "COMBINED"
+                          ? "warn"
+                          : "neutral"
                   }
                 >
                   {item.response.source === "LIVE_DATA"
                     ? "Live WMS Tool"
                     : item.response.source === "HANDBOOK"
-                    ? "Handbook RAG"
-                    : item.response.source === "COMBINED"
-                    ? "Live + SOPs"
-                    : "System"}
+                      ? "Handbook RAG"
+                      : item.response.source === "COMBINED"
+                        ? "Live + SOPs"
+                        : "System"}
                 </StatusPill>
                 {item.response.warehouse_context && (
                   <span className="numeric text-[11px] text-muted-foreground border border-border px-2 py-0.5 rounded">
@@ -322,7 +324,8 @@ function KnowledgePage() {
             {item.response.sources && item.response.sources.length > 0 && (
               <div className="mt-4 pt-4 border-t border-border space-y-2.5">
                 <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  <FileText className="size-3.5 text-signal" /> Source Citations ({item.response.sources.length})
+                  <FileText className="size-3.5 text-signal" /> Source Citations (
+                  {item.response.sources.length})
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {item.response.sources.map((src, sIdx) => (
@@ -332,7 +335,9 @@ function KnowledgePage() {
                     >
                       <div className="flex items-center justify-between text-muted-foreground font-mono text-[10px]">
                         <span className="font-semibold text-foreground">{src.source}</span>
-                        <span>Page {src.page} · Match: {Math.round(src.score * 100)}%</span>
+                        <span>
+                          Page {src.page} · Match: {Math.round(src.score * 100)}%
+                        </span>
                       </div>
                       <p className="text-muted-foreground text-[11px] leading-snug line-clamp-3 italic">
                         "{src.excerpt}"

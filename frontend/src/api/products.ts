@@ -10,8 +10,8 @@ export interface CreateProductPayload {
   name: string;
   upc: string;
   seller_id: string;
-  description?: string;
-  reorder_point?: number;
+  description?: string | undefined;
+  reorder_point?: number | undefined;
 }
 
 export async function getProductsApi(): Promise<Product[]> {

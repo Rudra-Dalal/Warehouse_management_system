@@ -15,7 +15,14 @@ describe("Audit API Module", () => {
 
   it("should fetch audit logs with filters", async () => {
     const mockLogs = [
-      { audit_id: "a1", entity_type: "INVENTORY", entity_id: "inv1", action: "ADJUST_STOCK", user_id: "u1", timestamp: "2026-08-13" },
+      {
+        audit_id: "a1",
+        entity_type: "INVENTORY",
+        entity_id: "inv1",
+        action: "ADJUST_STOCK",
+        user_id: "u1",
+        timestamp: "2026-08-13",
+      },
     ];
     (api.get as any).mockResolvedValue(mockLogs);
 

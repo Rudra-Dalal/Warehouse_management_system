@@ -9,7 +9,7 @@ export interface CreateReceivingPayload {
   seller_id: string;
   warehouse_id: WarehouseId;
   items: ReceivingItem[];
-  notes?: string;
+  notes?: string | undefined;
 }
 
 export async function getReceivingRecordsApi(warehouse_code?: string): Promise<ReceivingRecord[]> {
@@ -24,7 +24,7 @@ export async function getReceivingRecordByIdApi(receivingId: string): Promise<Re
 }
 
 export async function createReceivingRecordApi(
-  payload: CreateReceivingPayload
+  payload: CreateReceivingPayload,
 ): Promise<ReceivingRecord> {
   return api.post<ReceivingRecord>("/v1/receiving/", payload);
 }

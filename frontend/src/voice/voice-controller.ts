@@ -140,7 +140,7 @@ export class VoiceController {
         this.pendingConfirmation.originalTranscript,
         this.pendingConfirmation.intent,
         "error",
-        "Command cancelled by user."
+        "Command cancelled by user.",
       );
     }
     this.pendingConfirmation = null;
@@ -178,7 +178,7 @@ export class VoiceController {
         command.originalTranscript,
         command.intent,
         response.status === "error" ? "error" : "completed",
-        response.message
+        response.message,
       );
 
       // Automatic route navigation for read lookup intents if navigation handler exists
@@ -204,7 +204,7 @@ export class VoiceController {
     transcript: string,
     intent: string,
     status: VoiceHistoryEntry["status"],
-    message: string
+    message: string,
   ) {
     const entry: VoiceHistoryEntry = {
       id: Math.random().toString(36).substring(2, 9),

@@ -30,7 +30,7 @@ export async function getKnowledgeStatusApi(): Promise<KnowledgeStatusResponse> 
 }
 
 export async function searchKnowledgeApi(
-  payload: KnowledgeSearchPayload
+  payload: KnowledgeSearchPayload,
 ): Promise<KnowledgeSearchResponse> {
   return api.post<KnowledgeSearchResponse>("/v1/knowledge/search", payload);
 }

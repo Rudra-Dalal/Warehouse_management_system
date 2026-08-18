@@ -3,7 +3,13 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Loader2, AlertCircle } from "lucide-react";
 import { AppShell } from "@/components/whitfield/app-shell";
-import { PageHeader, Button, StatusPill, Input, EmptyState } from "@/components/whitfield/primitives";
+import {
+  PageHeader,
+  Button,
+  StatusPill,
+  Input,
+  EmptyState,
+} from "@/components/whitfield/primitives";
 import { Table, THead, Tr, Td, TableFooter } from "@/components/whitfield/table";
 import { getUsersApi, createUserApi } from "@/api/users";
 import { Role } from "@/types/wms";
@@ -52,7 +58,12 @@ function UsersPage() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("INVENTORY_CLERK");
 
-  const { data: usersList = [], isLoading, isError, error } = useQuery({
+  const {
+    data: usersList = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ["users"],
     queryFn: getUsersApi,
   });
@@ -113,13 +124,12 @@ function UsersPage() {
         ) : isError ? (
           <div className="flex flex-col items-center justify-center p-12 text-danger">
             <AlertCircle className="size-8" />
-            <p className="mt-3 text-sm font-medium">{(error as any)?.message || "Failed to load users"}</p>
+            <p className="mt-3 text-sm font-medium">
+              {(error as any)?.message || "Failed to load users"}
+            </p>
           </div>
         ) : usersList.length === 0 ? (
-          <EmptyState
-            title="No user accounts"
-            description="No users found in database."
-          />
+          <EmptyState title="No user accounts" description="No users found in database." />
         ) : (
           <Table minWidth={720}>
             <THead
@@ -173,7 +183,9 @@ function UsersPage() {
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-xs p-4">
           <div className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl space-y-4">
-            <h3 className="text-lg font-semibold tracking-tight text-foreground">Create User Account</h3>
+            <h3 className="text-lg font-semibold tracking-tight text-foreground">
+              Create User Account
+            </h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">

@@ -22,14 +22,28 @@ export const Route = createFileRoute("/audit")({
   component: AuditPage,
 });
 
-const ENTITY_KINDS = ["ALL", "INVENTORY", "RESERVATION", "RECEIVING", "ORDER", "PRODUCT", "USER"] as const;
+const ENTITY_KINDS = [
+  "ALL",
+  "INVENTORY",
+  "RESERVATION",
+  "RECEIVING",
+  "ORDER",
+  "PRODUCT",
+  "USER",
+] as const;
 
 function AuditPage() {
   const [kind, setKind] = useState<(typeof ENTITY_KINDS)[number]>("ALL");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const { data: auditLogs = [], isLoading, isError, error, refetch } = useQuery({
+  const {
+    data: auditLogs = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["audit"],
     queryFn: () => getAuditLogsApi({ limit: 100 }),
   });
@@ -37,8 +51,7 @@ function AuditPage() {
   const events = useMemo(() => {
     const q = query.trim().toLowerCase();
     return auditLogs.filter((log) => {
-      const matchesKind =
-        kind === "ALL" || log.entity_type.toUpperCase().includes(kind);
+      const matchesKind = kind === "ALL" || log.entity_type.toUpperCase().includes(kind);
       const matchesQuery =
         !q ||
         log.action.toLowerCase().includes(q) ||
@@ -81,7 +94,7 @@ function AuditPage() {
                 "rounded-sm px-2.5 py-1.5 text-xs font-medium uppercase transition-colors",
                 kind === k
                   ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               {k}
@@ -99,7 +112,9 @@ function AuditPage() {
         ) : isError ? (
           <div className="flex flex-col items-center justify-center p-12 text-danger">
             <AlertCircle className="size-8" />
-            <p className="mt-3 text-sm font-medium">{(error as any)?.message || "Failed to load audit trail"}</p>
+            <p className="mt-3 text-sm font-medium">
+              {(error as any)?.message || "Failed to load audit trail"}
+            </p>
           </div>
         ) : events.length === 0 ? (
           <EmptyState
@@ -145,7 +160,7 @@ function AuditPage() {
                       <ChevronDown
                         className={cn(
                           "mt-1 size-4 shrink-0 text-muted-foreground transition-transform duration-200",
-                          isOpen && "rotate-180"
+                          isOpen && "rotate-180",
                         )}
                       />
                     </button>
@@ -153,7 +168,7 @@ function AuditPage() {
                     <div
                       className={cn(
                         "grid transition-[grid-template-rows,opacity] duration-300",
-                        isOpen ? "mt-3 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                        isOpen ? "mt-3 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
                       )}
                     >
                       <div className="overflow-hidden">

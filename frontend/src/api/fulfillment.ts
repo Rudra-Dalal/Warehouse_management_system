@@ -23,8 +23,6 @@ export async function shipOrderApi(payload: FulfillmentActionPayload): Promise<F
   return api.post<FulfillmentRecord>("/v1/fulfillment/ship", payload);
 }
 
-export async function getFulfillmentHistoryApi(
-  orderId: string
-): Promise<FulfillmentRecord[]> {
+export async function getFulfillmentHistoryApi(orderId: string): Promise<FulfillmentRecord[]> {
   return api.get<FulfillmentRecord[]>(`/v1/fulfillment/orders/${orderId}`);
 }

@@ -17,7 +17,6 @@ export type VoiceIntent =
   | "receive_inventory"
   | "unknown";
 
-
 export interface ParsedEntities {
   sku?: string;
   upc?: string;
@@ -52,31 +51,31 @@ export function parseVoiceCommand(transcript: string, confidence = 0.95): VoiceC
 
   // Extract SKU (e.g., "sku-1048", "sku 1048", or "sku1048")
   const skuMatch = rawText.match(/sku[-:\s]?([a-z0-9]+)/i);
-  if (skuMatch) {
+  if (skuMatch && skuMatch[1]) {
     entities.sku = `SKU-${skuMatch[1].toUpperCase().replace(/^SKU-?/, "")}`;
   }
 
   // Extract UPC (e.g., 10-12 digits)
   const upcMatch = text.match(/\b\d{10,12}\b/);
-  if (upcMatch) {
+  if (upcMatch && upcMatch[0]) {
     entities.upc = upcMatch[0].padStart(12, "0");
   }
 
   // Extract Order ID (e.g. "ord-1001", "order 1001", "order ORD-1001")
   const orderMatch = rawText.match(/(?:order|ord)[-:\s]?([a-z0-9-]+)/i);
-  if (orderMatch) {
+  if (orderMatch && orderMatch[1]) {
     const val = orderMatch[1].toUpperCase();
     entities.order_id = val.startsWith("ORD-") ? val : `ORD-${val}`;
   }
 
   // Extract Quantity (e.g., "by 10", "5 units", "quantity 20")
   const qtyMatch = text.match(/(?:by|quantity|reserve|add|count|minus|plus|\+|-)\s*(-?\d+)/);
-  if (qtyMatch) {
+  if (qtyMatch && qtyMatch[1]) {
     entities.quantity = parseInt(qtyMatch[1], 10);
   } else {
     // Fallback digit match
     const numMatch = text.match(/\b(\d+)\s*(?:units|items|pcs|pieces)?\b/);
-    if (numMatch && !entities.upc && !entities.order_id?.includes(numMatch[1])) {
+    if (numMatch && numMatch[1] && !entities.upc && !entities.order_id?.includes(numMatch[1])) {
       entities.quantity = parseInt(numMatch[1], 10);
     }
   }
@@ -276,6 +275,7 @@ export function parseVoiceCommand(transcript: string, confidence = 0.95): VoiceC
     isMutating: false,
     originalTranscript: rawText,
     confidence,
-    clarificationNeeded: "Could not identify a supported WMS command. Try 'Show inventory for SKU 1048' or 'What orders are ready to pack?'.",
+    clarificationNeeded:
+      "Could not identify a supported WMS command. Try 'Show inventory for SKU 1048' or 'What orders are ready to pack?'.",
   };
 }

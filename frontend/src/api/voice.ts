@@ -21,7 +21,7 @@ export interface VoiceCommandApiResponse {
 }
 
 export async function executeVoiceCommandApi(
-  payload: VoiceCommandPayload
+  payload: VoiceCommandPayload,
 ): Promise<VoiceCommandApiResponse> {
   return api.post<VoiceCommandApiResponse>("/v1/voice/command", payload);
 }

@@ -16,7 +16,9 @@ describe("Users API Module", () => {
   });
 
   it("should fetch list of users", async () => {
-    const mockUsers = [{ user_id: "u1", username: "admin", email: "admin@wms.com", role: "ADMIN", is_active: true }];
+    const mockUsers = [
+      { user_id: "u1", username: "admin", email: "admin@wms.com", role: "ADMIN", is_active: true },
+    ];
     (api.get as any).mockResolvedValue(mockUsers);
 
     const result = await getUsersApi();

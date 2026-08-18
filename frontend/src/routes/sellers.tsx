@@ -3,7 +3,13 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Loader2, AlertCircle } from "lucide-react";
 import { AppShell } from "@/components/whitfield/app-shell";
-import { PageHeader, Button, StatusPill, Input, EmptyState } from "@/components/whitfield/primitives";
+import {
+  PageHeader,
+  Button,
+  StatusPill,
+  Input,
+  EmptyState,
+} from "@/components/whitfield/primitives";
 import { Table, THead, Tr, Td, TableFooter } from "@/components/whitfield/table";
 import { getSellersApi, createSellerApi } from "@/api/sellers";
 import { toast } from "sonner";
@@ -33,7 +39,12 @@ function SellersPage() {
   const [code, setCode] = useState("");
   const [email, setEmail] = useState("");
 
-  const { data: sellers = [], isLoading, isError, error } = useQuery({
+  const {
+    data: sellers = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ["sellers"],
     queryFn: getSellersApi,
   });
@@ -103,7 +114,9 @@ function SellersPage() {
         ) : isError ? (
           <div className="flex flex-col items-center justify-center p-12 text-danger">
             <AlertCircle className="size-8" />
-            <p className="mt-3 text-sm font-medium">{(error as any)?.message || "Failed to load sellers"}</p>
+            <p className="mt-3 text-sm font-medium">
+              {(error as any)?.message || "Failed to load sellers"}
+            </p>
           </div>
         ) : sellers.length === 0 ? (
           <EmptyState
@@ -145,7 +158,9 @@ function SellersPage() {
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-xs p-4">
           <div className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl space-y-4">
-            <h3 className="text-lg font-semibold tracking-tight text-foreground">Onboard Merchant Account</h3>
+            <h3 className="text-lg font-semibold tracking-tight text-foreground">
+              Onboard Merchant Account
+            </h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">

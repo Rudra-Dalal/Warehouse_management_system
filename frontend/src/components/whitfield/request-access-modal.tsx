@@ -74,8 +74,8 @@ export function RequestAccessModal({ isOpen, onClose }: RequestAccessModalProps)
                 Request Access
               </DialogTitle>
               <DialogDescription className="text-xs leading-relaxed text-muted-foreground">
-                Warehouse accounts are created by authorized administrators. Submit your details
-                and contact your warehouse administrator for account activation.
+                Warehouse accounts are created by authorized administrators. Submit your details and
+                contact your warehouse administrator for account activation.
               </DialogDescription>
             </DialogHeader>
 
@@ -109,14 +109,13 @@ export function RequestAccessModal({ isOpen, onClose }: RequestAccessModalProps)
                   placeholder="alex.morgan@whitfield.com"
                   className="mt-1"
                 />
-                {errors.email ? (
-                  <p className="mt-1 text-xs text-danger">{errors.email}</p>
-                ) : null}
+                {errors.email ? <p className="mt-1 text-xs text-danger">{errors.email}</p> : null}
               </div>
 
               <div>
                 <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Department / Team <span className="normal-case text-muted-foreground/70">(Optional)</span>
+                  Department / Team{" "}
+                  <span className="normal-case text-muted-foreground/70">(Optional)</span>
                 </label>
                 <Input
                   type="text"
@@ -143,7 +142,8 @@ export function RequestAccessModal({ isOpen, onClose }: RequestAccessModalProps)
               <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 p-3 text-xs text-muted-foreground">
                 <ShieldAlert className="size-4 shrink-0 text-signal" />
                 <span>
-                  Administrators review and assign security roles (ADMIN, MANAGER, STAFF, READ_ONLY).
+                  Administrators review and assign security roles (ADMIN, MANAGER, STAFF,
+                  READ_ONLY).
                 </span>
               </div>
 

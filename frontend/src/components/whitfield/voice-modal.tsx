@@ -64,7 +64,10 @@ export function VoiceModal({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[10vh]">
       {/* Backdrop */}
-      <div className="anim-fade absolute inset-0 bg-foreground/40 backdrop-blur-xs" onClick={() => onOpenChange(false)} />
+      <div
+        className="anim-fade absolute inset-0 bg-foreground/40 backdrop-blur-xs"
+        onClick={() => onOpenChange(false)}
+      />
 
       {/* Modal Card */}
       <div className="anim-pop relative w-full max-w-lg overflow-hidden rounded-xl border border-border bg-popover shadow-2xl space-y-4 p-6">
@@ -74,8 +77,12 @@ export function VoiceModal({
               <Mic className="size-4 text-signal-foreground" />
             </span>
             <div>
-              <h2 className="text-sm font-semibold tracking-tight text-foreground">WMS Voice Controller</h2>
-              <p className="text-[11px] text-muted-foreground">STT Command Interface · Natural Language</p>
+              <h2 className="text-sm font-semibold tracking-tight text-foreground">
+                WMS Voice Controller
+              </h2>
+              <p className="text-[11px] text-muted-foreground">
+                STT Command Interface · Natural Language
+              </p>
             </div>
           </div>
           <button
@@ -110,8 +117,8 @@ export function VoiceModal({
               {sttState === "listening"
                 ? "● Listening to Voice..."
                 : sttState === "processing"
-                ? "Processing Intent..."
-                : "Click Mic to Speak"}
+                  ? "Processing Intent..."
+                  : "Click Mic to Speak"}
             </span>
             <p className="mt-1 text-xs text-muted-foreground">
               Try: "Show inventory for SKU 1048" or "What orders are ready to pack?"
@@ -174,7 +181,9 @@ export function VoiceModal({
                     "{item.transcript}"
                   </span>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="numeric text-[10px] text-muted-foreground">{item.timestamp}</span>
+                    <span className="numeric text-[10px] text-muted-foreground">
+                      {item.timestamp}
+                    </span>
                     {item.status === "completed" ? (
                       <CheckCircle2 className="size-3.5 text-ok" />
                     ) : item.status === "denied" ? (

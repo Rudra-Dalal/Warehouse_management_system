@@ -62,7 +62,12 @@ function InventoryPage() {
     queryFn: getProductsApi,
   });
 
-  const { data: inventory = [], isLoading: loadingInventory, isError, error } = useQuery({
+  const {
+    data: inventory = [],
+    isLoading: loadingInventory,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ["inventory", activeWarehouse],
     queryFn: () => getInventoryApi({ warehouse_code: activeWarehouse || undefined }),
   });
@@ -82,7 +87,10 @@ function InventoryPage() {
   const inventoryByProduct = useMemo(() => {
     const map = new Map<
       string,
-      { reno: { available: number; reserved: number }; columbus: { available: number; reserved: number } }
+      {
+        reno: { available: number; reserved: number };
+        columbus: { available: number; reserved: number };
+      }
     >();
 
     inventory.forEach((inv) => {
@@ -136,7 +144,9 @@ function InventoryPage() {
     },
     onError: (err: any) => {
       if (err.status === 409) {
-        toast.error("Reservation unavailable: The available quantity changed before your request completed.");
+        toast.error(
+          "Reservation unavailable: The available quantity changed before your request completed.",
+        );
       } else {
         toast.error(err.message || "Failed to reserve inventory.");
       }
@@ -184,7 +194,10 @@ function InventoryPage() {
         title="Inventory"
         description="Availability and reservations per SKU, compared across warehouses backed by real MongoDB state."
         actions={
-          <Button variant="ghost" onClick={() => queryClient.invalidateQueries({ queryKey: ["inventory"] })}>
+          <Button
+            variant="ghost"
+            onClick={() => queryClient.invalidateQueries({ queryKey: ["inventory"] })}
+          >
             <RefreshCw className="mr-1.5 size-4" /> Refresh
           </Button>
         }
@@ -210,7 +223,7 @@ function InventoryPage() {
                 "rounded-sm px-2.5 py-1.5 text-xs font-medium transition-colors",
                 filter === f
                   ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               {f}
@@ -227,7 +240,7 @@ function InventoryPage() {
                 "numeric rounded-sm px-2.5 py-1.5 text-[11px] tracking-wider transition-colors",
                 warehouse === w
                   ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               {w}
@@ -245,7 +258,9 @@ function InventoryPage() {
         ) : isError ? (
           <div className="flex flex-col items-center justify-center p-12 text-danger">
             <AlertCircle className="size-8" />
-            <p className="mt-3 text-sm font-medium">{(error as any)?.message || "Failed to load inventory"}</p>
+            <p className="mt-3 text-sm font-medium">
+              {(error as any)?.message || "Failed to load inventory"}
+            </p>
           </div>
         ) : rows.length === 0 ? (
           <EmptyState
@@ -300,8 +315,14 @@ function InventoryPage() {
                           {p.sku} · UPC {p.upc} · {sellerMap.get(p.seller_id) || "Seller"}
                         </div>
                       </td>
-                      <WarehouseCell available={invData.reno.available} reserved={invData.reno.reserved} />
-                      <WarehouseCell available={invData.columbus.available} reserved={invData.columbus.reserved} />
+                      <WarehouseCell
+                        available={invData.reno.available}
+                        reserved={invData.reno.reserved}
+                      />
+                      <WarehouseCell
+                        available={invData.columbus.available}
+                        reserved={invData.columbus.reserved}
+                      />
                       <td className="numeric px-4 py-3.5 text-right font-semibold">
                         {totalAvail.toLocaleString()}
                       </td>
@@ -321,7 +342,11 @@ function InventoryPage() {
                             </Button>
                           ) : null}
                           {canReserve ? (
-                            <Button size="sm" variant="ghost" onClick={() => setReserveModalProduct(p)}>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setReserveModalProduct(p)}
+                            >
                               Reserve
                             </Button>
                           ) : null}
@@ -489,7 +514,7 @@ function Th({ children, className }: { children: React.ReactNode; className?: st
     <th
       className={cn(
         "px-4 py-2.5 text-left font-mono text-[10px] font-medium tracking-[0.14em] text-muted-foreground uppercase",
-        className
+        className,
       )}
     >
       {children}

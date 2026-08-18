@@ -15,7 +15,15 @@ describe("Sellers API Module", () => {
   });
 
   it("should fetch list of sellers", async () => {
-    const mockSellers = [{ seller_id: "s1", name: "Northgate Supply", code: "NGS", contact_email: "contact@ngs.com", is_active: true }];
+    const mockSellers = [
+      {
+        seller_id: "s1",
+        name: "Northgate Supply",
+        code: "NGS",
+        contact_email: "contact@ngs.com",
+        is_active: true,
+      },
+    ];
     (api.get as any).mockResolvedValue(mockSellers);
 
     const result = await getSellersApi();

@@ -29,7 +29,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [activeWarehouse, setActiveWarehouseState] = useState<string | null>(
-    localStorage.getItem("activeWarehouse") || null
+    localStorage.getItem("activeWarehouse") || null,
   );
 
   const setActiveWarehouse = useCallback((wh: string) => {
@@ -39,22 +39,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const initializeWarehouse = (fetchedUser: User) => {
     if (fetchedUser) {
-        let defaultWh = localStorage.getItem("activeWarehouse");
-        if (fetchedUser.role === "ADMIN") {
-            if (!defaultWh) defaultWh = "RENO";
-        } else {
-            if (!defaultWh || !fetchedUser.assigned_warehouse_ids?.includes(defaultWh)) {
-                defaultWh = fetchedUser.assigned_warehouse_ids?.[0] || null;
-            }
+      let defaultWh = localStorage.getItem("activeWarehouse");
+      if (fetchedUser.role === "ADMIN") {
+        if (!defaultWh) defaultWh = "RENO";
+      } else {
+        if (!defaultWh || !fetchedUser.assigned_warehouse_ids?.includes(defaultWh)) {
+          defaultWh = fetchedUser.assigned_warehouse_ids?.[0] || null;
         }
-        if (defaultWh) {
-            setActiveWarehouse(defaultWh);
-        } else {
-            setActiveWarehouseState(null);
-            localStorage.removeItem("activeWarehouse");
-        }
+      }
+      if (defaultWh) {
+        setActiveWarehouse(defaultWh);
+      } else {
+        setActiveWarehouseState(null);
+        localStorage.removeItem("activeWarehouse");
+      }
     }
-  }
+  };
 
   const refetchUser = useCallback(async () => {
     const token = sessionManager.getToken();

@@ -23,7 +23,10 @@ export function CommandPalette({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12vh]">
-      <div className="anim-fade absolute inset-0 bg-foreground/35" onClick={() => onOpenChange(false)} />
+      <div
+        className="anim-fade absolute inset-0 bg-foreground/35"
+        onClick={() => onOpenChange(false)}
+      />
       <Command
         loop
         className="anim-pop relative w-full max-w-lg overflow-hidden rounded-xl border border-border bg-popover shadow-[0_24px_60px_-20px_oklch(0.2_0.01_60/0.35)]"
@@ -52,7 +55,12 @@ export function CommandPalette({
             className="[&_[cmdk-group-heading]]:eyebrow [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-2"
           >
             {NAV.flatMap((s) => s.items).map((item) => (
-              <Item key={item.to} onSelect={() => go(item.to)} label={item.label} meta="Navigation" />
+              <Item
+                key={item.to}
+                onSelect={() => go(item.to)}
+                label={item.label}
+                meta="Navigation"
+              />
             ))}
           </Command.Group>
         </Command.List>
@@ -61,15 +69,7 @@ export function CommandPalette({
   );
 }
 
-function Item({
-  label,
-  meta,
-  onSelect,
-}: {
-  label: string;
-  meta: string;
-  onSelect: () => void;
-}) {
+function Item({ label, meta, onSelect }: { label: string; meta: string; onSelect: () => void }) {
   return (
     <Command.Item
       value={`${label} ${meta}`}

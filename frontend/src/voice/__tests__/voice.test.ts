@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { parseVoiceCommand } from "../command-parser";
 import { VoiceController } from "../voice-controller";
-import { SpeechToTextProvider, STTState, STTStateCallback, STTResultCallback, STTErrorCallback } from "../stt/provider";
+import {
+  SpeechToTextProvider,
+  STTState,
+  STTStateCallback,
+  STTResultCallback,
+  STTErrorCallback,
+} from "../stt/provider";
 import { User } from "@/types/wms";
 
 // Mock STT Provider
@@ -58,6 +64,7 @@ const adminUser: User = {
   email: "admin@wms.com",
   full_name: "Admin User",
   role: "ADMIN",
+  assigned_warehouse_ids: ["RENO", "COLUMBUS"],
   is_active: true,
 };
 
@@ -67,6 +74,7 @@ const readOnlyUser: User = {
   email: "read@wms.com",
   full_name: "Read Only",
   role: "READ_ONLY",
+  assigned_warehouse_ids: ["RENO"],
   is_active: true,
 };
 

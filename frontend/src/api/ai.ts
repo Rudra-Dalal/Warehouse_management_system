@@ -6,7 +6,7 @@ import { api } from "./client";
 
 export interface AIAskPayload {
   query: string;
-  warehouse_code?: string | null;
+  warehouse_code?: string | null | undefined;
 }
 
 export interface RAGSourceCitation {
@@ -19,8 +19,8 @@ export interface RAGSourceCitation {
 export interface AIAskResponse {
   response: string;
   source: "LIVE_DATA" | "HANDBOOK" | "COMBINED" | "ERROR";
-  sources?: RAGSourceCitation[];
-  warehouse_context?: string | null;
+  sources?: RAGSourceCitation[] | undefined;
+  warehouse_context?: string | null | undefined;
 }
 
 export async function askAiApi(payload: AIAskPayload): Promise<AIAskResponse> {

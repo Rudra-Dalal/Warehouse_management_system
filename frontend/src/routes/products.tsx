@@ -46,7 +46,12 @@ function ProductsPage() {
   const [description, setDescription] = useState("");
   const [reorderPoint, setReorderPoint] = useState(50);
 
-  const { data: products = [], isLoading, isError, error } = useQuery({
+  const {
+    data: products = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ["products"],
     queryFn: getProductsApi,
   });
@@ -105,7 +110,7 @@ function ProductsPage() {
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q) ||
         p.upc.includes(q) ||
-        (sellerMap.get(p.seller_id) || "").toLowerCase().includes(q)
+        (sellerMap.get(p.seller_id) || "").toLowerCase().includes(q),
     );
   }, [products, query, sellerMap]);
 
@@ -143,12 +148,16 @@ function ProductsPage() {
         ) : isError ? (
           <div className="flex flex-col items-center justify-center p-12 text-danger">
             <AlertCircle className="size-8" />
-            <p className="mt-3 text-sm font-medium">{(error as any)?.message || "Failed to load products"}</p>
+            <p className="mt-3 text-sm font-medium">
+              {(error as any)?.message || "Failed to load products"}
+            </p>
           </div>
         ) : rows.length === 0 ? (
           <EmptyState
             title="No products found"
-            description={query ? "No catalog record matches that query." : "No products available in database."}
+            description={
+              query ? "No catalog record matches that query." : "No products available in database."
+            }
           />
         ) : (
           <Table>
@@ -189,10 +198,14 @@ function ProductsPage() {
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-xs p-4">
           <div className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl space-y-4">
-            <h3 className="text-lg font-semibold tracking-tight text-foreground">Create Master Product</h3>
+            <h3 className="text-lg font-semibold tracking-tight text-foreground">
+              Create Master Product
+            </h3>
             <form onSubmit={handleCreateSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">SKU *</label>
+                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  SKU *
+                </label>
                 <Input
                   required
                   value={sku}
@@ -203,7 +216,9 @@ function ProductsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">Product Name *</label>
+                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Product Name *
+                </label>
                 <Input
                   required
                   value={name}
@@ -214,7 +229,9 @@ function ProductsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">UPC Barcode *</label>
+                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  UPC Barcode *
+                </label>
                 <Input
                   required
                   value={upc}
@@ -225,7 +242,9 @@ function ProductsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">Seller *</label>
+                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Seller *
+                </label>
                 <select
                   required
                   value={sellerId}
@@ -242,7 +261,9 @@ function ProductsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">Reorder Point</label>
+                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Reorder Point
+                </label>
                 <Input
                   type="number"
                   value={reorderPoint}
@@ -252,7 +273,9 @@ function ProductsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">Description</label>
+                <label className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Description
+                </label>
                 <Input
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}

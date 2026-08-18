@@ -12,15 +12,15 @@ export interface FieldValidationError {
 export class WmsApiError extends Error {
   public readonly status: number;
   public readonly code: string;
-  public readonly fieldErrors?: FieldValidationError[];
+  public readonly fieldErrors?: FieldValidationError[] | undefined;
   public readonly isNetworkError: boolean;
 
   constructor(params: {
     status: number;
     message: string;
-    code?: string;
-    fieldErrors?: FieldValidationError[];
-    isNetworkError?: boolean;
+    code?: string | undefined;
+    fieldErrors?: FieldValidationError[] | undefined;
+    isNetworkError?: boolean | undefined;
   }) {
     super(params.message);
     this.name = "WmsApiError";
