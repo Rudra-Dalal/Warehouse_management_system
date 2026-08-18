@@ -276,10 +276,10 @@ async def process_voice_command(
         permission_crud = PermissionCRUD()
         permissions = await permission_crud.get_by_ids(role.permission_ids) if role else []
         perm_names = [p.name for p in permissions]
-        if "receiving:write" not in perm_names:
+        if "receiving:write" not in perm_names and "inventory.receive" not in perm_names:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Permission denied: 'receiving:write' required for voice inbound receiving.",
+                detail="Permission denied: 'inventory.receive' required for voice inbound receiving.",
             )
 
         sku = entities.get("sku")

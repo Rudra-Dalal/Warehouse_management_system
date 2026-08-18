@@ -22,7 +22,6 @@ class Settings(BaseSettings):
     ADMIN_PASSWORD: str = ""
 
     GEMINI_API_KEY: Optional[str] = None
-    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000"
     KNOWLEDGE_PDF_PATH: Optional[str] = None
 
     model_config = SettingsConfigDict(
@@ -52,13 +51,6 @@ class Settings(BaseSettings):
             self.GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 
         return self
-
-    @property
-    def cors_origins_list(self) -> List[str]:
-        if not self.CORS_ORIGINS:
-            return ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"]
-        origins = [orig.strip() for orig in self.CORS_ORIGINS.split(",") if orig.strip()]
-        return origins if origins else ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
 settings = Settings()

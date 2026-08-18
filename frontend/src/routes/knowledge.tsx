@@ -10,14 +10,14 @@ import {
   FileText,
   CheckCircle2,
   AlertCircle,
-  HelpCircle,
   Cpu,
-  Layers,
-  ChevronRight,
+  Copy,
+  Check,
+  Trash2,
 } from "lucide-react";
 import { AppShell } from "@/components/whitfield/app-shell";
 import { PageHeader, Button, StatusPill, Input } from "@/components/whitfield/primitives";
-import { askAiApi, AIAskResponse, RAGSourceCitation } from "@/api/ai";
+import { askAiApi, AIAskResponse } from "@/api/ai";
 import { getKnowledgeStatusApi, triggerKnowledgeIngestApi } from "@/api/knowledge";
 import { useAuth } from "@/auth/auth-context";
 import { toast } from "sonner";
@@ -42,6 +42,115 @@ const QUICK_PROMPTS = [
   "Give me an inventory overview for Reno hub",
   "How many customer orders are currently active?",
 ];
+
+function renderInlineMarkdown(text: string) {
+  const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g);
+  return parts.map((part, idx) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <strong key={idx} className="font-semibold text-foreground">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return (
+        <code
+          key={idx}
+          className="rounded bg-surface px-1.5 py-0.5 font-mono text-[11px] text-signal border border-border"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    return part;
+  });
+}
+
+function FormattedAnswer({ text }: { text: string }) {
+  const paragraphs = text.split("\n\n");
+
+  return (
+    <div className="space-y-3 text-sm leading-relaxed text-foreground/95">
+      {paragraphs.map((p, pIdx) => {
+        const lines = p.split("\n").filter((l) => l.trim().length > 0);
+        const isList = lines.length > 0 && lines.every((l) => /^\d+\.\s+|^[-*]\s+/.test(l.trim()));
+
+        if (isList) {
+          return (
+            <ul key={pIdx} className="space-y-2 my-2">
+              {lines.map((line, lIdx) => {
+                const numMatch = line.trim().match(/^(\d+)\.\s+(.*)/);
+                const bulletMatch = line.trim().match(/^[-*]\s+(.*)/);
+
+                if (numMatch) {
+                  return (
+                    <li key={lIdx} className="flex items-start gap-2.5">
+                      <span className="shrink-0 flex size-5 items-center justify-center rounded-full bg-signal/15 text-signal font-mono text-[11px] font-semibold mt-0.5">
+                        {numMatch[1]}
+                      </span>
+                      <span className="flex-1 text-sm leading-normal">
+                        {renderInlineMarkdown(numMatch[2])}
+                      </span>
+                    </li>
+                  );
+                }
+                if (bulletMatch) {
+                  return (
+                    <li key={lIdx} className="flex items-start gap-2.5">
+                      <span className="shrink-0 size-1.5 rounded-full bg-signal mt-2" />
+                      <span className="flex-1 text-sm leading-normal">
+                        {renderInlineMarkdown(bulletMatch[1])}
+                      </span>
+                    </li>
+                  );
+                }
+                return <li key={lIdx}>{renderInlineMarkdown(line)}</li>;
+              })}
+            </ul>
+          );
+        }
+
+        return (
+          <p key={pIdx}>
+            {lines.map((l, lIdx) => (
+              <span key={lIdx} className={cn(lIdx > 0 && "block mt-1")}>
+                {renderInlineMarkdown(l)}
+              </span>
+            ))}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+function CopyAnswerButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      toast.success("Answer copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy text");
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer px-2 py-1 rounded hover:bg-surface"
+      title="Copy answer"
+    >
+      {copied ? <Check className="size-3.5 text-ok" /> : <Copy className="size-3.5" />}
+      <span>{copied ? "Copied" : "Copy"}</span>
+    </button>
+  );
+}
 
 function KnowledgePage() {
   const queryClient = useQueryClient();
@@ -251,6 +360,22 @@ function KnowledgePage() {
 
       {/* Answers & History Feed */}
       <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Activity & History
+          </h2>
+          {history.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setHistory([])}
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-danger transition-colors cursor-pointer"
+            >
+              <Trash2 className="size-3.5" />
+              <span>Clear History</span>
+            </button>
+          )}
+        </div>
+
         {askMutation.isPending && (
           <div className="anim-rise panel p-6 border-signal/30 bg-signal/5">
             <div className="flex items-center gap-3">
@@ -285,7 +410,12 @@ function KnowledgePage() {
                 <div className="grid size-6 place-items-center rounded-full bg-surface-2 text-xs font-semibold text-foreground">
                   Q
                 </div>
-                <p className="text-sm font-medium text-foreground">{item.query}</p>
+                <div>
+                  <p className="text-sm font-medium text-foreground">{item.query}</p>
+                  <span className="text-[10px] font-mono text-muted-foreground">
+                    {item.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <StatusPill
@@ -315,31 +445,40 @@ function KnowledgePage() {
               </div>
             </div>
 
-            {/* Answer Content */}
-            <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 leading-relaxed text-sm whitespace-pre-wrap">
-              {item.response.response}
+            {/* Direct Grounded Answer Content */}
+            <div className="rounded-lg bg-surface-2/30 border border-border/60 p-4 sm:p-5 space-y-3">
+              <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-signal">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-3.5" />
+                  <span>Direct Answer</span>
+                </div>
+                <CopyAnswerButton text={item.response.response} />
+              </div>
+              <FormattedAnswer text={item.response.response} />
             </div>
 
             {/* Source Citations Panel (if handbook RAG was used) */}
             {item.response.sources && item.response.sources.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-border space-y-2.5">
+              <div className="pt-2 space-y-2.5">
                 <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  <FileText className="size-3.5 text-signal" /> Source Citations (
+                  <FileText className="size-3.5 text-signal" /> Supporting Handbook Citations (
                   {item.response.sources.length})
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2.5 sm:grid-cols-2">
                   {item.response.sources.map((src, sIdx) => (
                     <div
                       key={sIdx}
-                      className="rounded-lg border border-border bg-surface-2/60 p-3 text-xs space-y-1.5 hover:border-signal/30 transition-colors"
+                      className="rounded-lg border border-border bg-surface-2/70 p-3.5 text-xs space-y-2 hover:border-signal/40 transition-colors"
                     >
-                      <div className="flex items-center justify-between text-muted-foreground font-mono text-[10px]">
-                        <span className="font-semibold text-foreground">{src.source}</span>
-                        <span>
-                          Page {src.page} · Match: {Math.round(src.score * 100)}%
+                      <div className="flex items-center justify-between text-muted-foreground font-mono text-[11px]">
+                        <span className="font-semibold text-foreground truncate max-w-[180px]">
+                          {src.source}
+                        </span>
+                        <span className="shrink-0 rounded bg-surface px-1.5 py-0.5 border border-border">
+                          Page {src.page} · {Math.round(src.score * 100)}% match
                         </span>
                       </div>
-                      <p className="text-muted-foreground text-[11px] leading-snug line-clamp-3 italic">
+                      <p className="text-muted-foreground text-[11px] leading-relaxed line-clamp-4 italic border-l-2 border-signal/40 pl-2">
                         "{src.excerpt}"
                       </p>
                     </div>

@@ -195,32 +195,18 @@ class AIService:
                 "sop", "handbook", "policy", "procedure", "how to", "guideline",
                 "rule", "safety", "protocol", "damaged", "damage", "quarantine",
                 "discrepancy", "inspection", "return", "hazard", "handling",
-                "audit", "compliance", "receiving protocol", "receiving procedure"
+                "audit", "compliance", "receiving protocol", "receiving procedure",
+                "can a", "can i", "how do i", "what is the protocol", "barcode scanning",
+                "what is the procedure", "how does an order"
             ]
-            if any(k in q_lower for k in sop_keywords):
+            live_indicators = ["how many orders", "active orders", "order count", "orders are currently", "stock in", "units available", "items available", "overview for"]
+            if any(k in q_lower for k in sop_keywords) and not any(li in q_lower for li in live_indicators):
                 from core.rag.retriever import RAGRetriever
+                from core.rag.config import rag_settings
                 retriever = RAGRetriever()
                 rag_res = await retriever.search(request.query)
                 sources = rag_res.get("sources", [])
-                
-                if sources:
-                    top_source = sources[0]
-                    excerpt = top_source.get("excerpt", "").strip()
-                    page_num = top_source.get("page", 1)
-                    source_title = top_source.get("source", "WMS Operations Handbook")
-                    response_text = (
-                        f"**{source_title} — Page {page_num} Standard Operating Procedure**\n\n"
-                        f"{excerpt}\n\n"
-                        f"*Action Items:* Follow quarantine separation protocols, mark discrepancy records in the Receiving module, and notify your warehouse supervisor immediately."
-                    )
-                else:
-                    response_text = (
-                        "**Standard Inbound Discrepancy & Quarantine Protocol**\n\n"
-                        "1. **Inspection**: Verify physical package condition and compare packing slip quantities against PO line items.\n"
-                        "2. **Quarantine**: Immediately stage any damaged, crushed, or unsealed goods in the designated Yellow Quarantine Area.\n"
-                        "3. **Logging**: Record the item count as 'Damaged' or 'Discrepancy' in the Receiving module to flag inventory counts.\n"
-                        "4. **Escalation**: Notify the shift supervisor and generate an RMA claim record for the supplier."
-                    )
+                response_text = rag_res.get("answer") or rag_settings.SAFE_UNKNOWN_FALLBACK
 
                 return AIResponse(
                     response=response_text,

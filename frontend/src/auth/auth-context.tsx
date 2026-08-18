@@ -97,9 +97,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setError(null);
     try {
       const response = await loginApi(credentials);
-      sessionManager.setSession(response.access_token, response.user);
-      setUser(response.user);
-      initializeWarehouse(response.user);
+      sessionManager.setSession(response.access_token, response.user || null);
+
+      let loggedInUser = response.user;
+      if (!loggedInUser) {
+        loggedInUser = await getCurrentUserApi();
+      }
+
+      sessionManager.setSession(response.access_token, loggedInUser);
+      setUser(loggedInUser);
+      initializeWarehouse(loggedInUser);
     } catch (err: any) {
       setError(err.message || "Failed to sign in. Check email and password.");
       throw err;

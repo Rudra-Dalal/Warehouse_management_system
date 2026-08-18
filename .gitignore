@@ -20,8 +20,6 @@ node_modules/
 dist/
 dist-ssr/
 .output/
-.vercel/
-.wrangler/
 .tanstack/
 .vinxi/
 .nitro/

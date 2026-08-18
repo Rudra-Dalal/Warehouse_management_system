@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/auth/auth-context";
 import { Button } from "@/components/whitfield/primitives";
 import { RequestAccessModal } from "@/components/whitfield/request-access-modal";
@@ -25,9 +25,11 @@ function LoginPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
 
-  if (isAuthenticated) {
-    navigate({ to: "/" });
-  }
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate({ to: "/" });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

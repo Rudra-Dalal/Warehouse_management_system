@@ -4,7 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from commons.logger import get_logger
 from core.apis.api import api_router
-from core.config import settings
 from core.database.database import DatabaseManager, seed_fixed_warehouses
 from core.database.indexes import create_database_indexes
 from core.database.seed_rbac import seed_rbac_data
@@ -43,8 +42,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_origin_regex=r"^https://.*\.vercel\.app$",
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
